@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title>wis-free-v3 Settings</title>
+    <link rel="stylesheet" href="./src/style.css">
+</head>
+
+<body>
+    <div id="app" class="container">
+        <!-- Header -->
+        <div class="flex-between" style="margin-bottom: 30px;">
+            <h1 style="margin: 0;">wis-free-v3 Settings</h1>
+            <div style="color: var(--text-muted); font-size: 12px;">v1.0.0</div>
+        </div>
+
+        <div id="saveStatus" class="save-status">Settings Saved!</div>
+
+        <!-- Settings Form -->
+        <div id="settingsForm">
+
+            <!-- API Key -->
+            <div class="section">
+                <label>Groq API Key</label>
+                <div class="form-control">
+                    <div class="flex-row">
+                        <div class="input-wrapper">
+                            <input type="password" id="apiKey" placeholder="gsk_...">
+                            <button class="eye-btn" onclick="toggleApiKey()" id="eyeBtn">👁️</button>
+                        </div>
+                        <button onclick="saveApiKey()">Save</button>
+                    </div>
+                </div>
+                <p style="font-size: 12px; color: var(--text-muted); margin-top: 8px;">
+                    Get your free API key at <a href="https://console.groq.com/keys" target="_blank"
+                        style="color: var(--primary);">console.groq.com/keys</a>
+                </p>
+            </div>
+
+            <!-- Shortcut -->
+            <div class="section">
+                <label>Shortcut (Hold to Record)</label>
+                <div class="form-control">
+                    <div class="flex-row">
+                        <div class="input-wrapper">
+                            <input type="text" id="shortcutInput" placeholder="Click Record to set..." readonly>
+                        </div>
+                        <button onclick="recordShortcut()" id="recordBtn">Record</button>
+                    </div>
+                </div>
+                <p style="font-size: 12px; color: var(--text-muted); margin-top: 8px;">
+                    Click Record, then press your desired key combination (e.g., Ctrl+X)
+                </p>
+            </div>
+
+            <!-- Whisper Model -->
+            <div class="section">
+                <label>Whisper Model</label>
+                <select id="whisperModel" onchange="saveWhisperModel()" class="form-control">
+                    <option value="whisper-large-v3-turbo">whisper-large-v3-turbo (Recommended)</option>
+                    <option value="whisper-large-v3">whisper-large-v3</option>
+                </select>
+            </div>
+
+            <!-- Language -->
+            <div class="section">
+                <label>Transcription Language</label>
+                <select id="language" onchange="saveLanguage()" class="form-control">
+                    <option value="en">English (en)</option>
+                    <option value="es">Spanish (es)</option>
+                </select>
+                <p style="font-size: 11px; color: var(--text-muted); margin-top: 5px;">Specifying language reduces latency and improves accuracy.</p>
+            </div>
+
+            <!-- AI Model -->
+            <div class="section">
+                <label>AI Model (Text Refinement)</label>
+                <select id="aiModel" onchange="saveAiModel()" class="form-control">
+                    <option value="None">None (Skip Refinement)</option>
+                    <option value="openai/gpt-oss-120b-high">openai/gpt-oss-120b (high reasoning)</option>
+                    <option value="openai/gpt-oss-120b">openai/gpt-oss-120b (low reasoning)</option>
+                    <option value="openai/gpt-oss-20b-high">openai/gpt-oss-20b (high reasoning)</option>
+                    <option value="openai/gpt-oss-20b">openai/gpt-oss-20b (low reasoning)</option>
+                    <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile</option>
+                    <option value="llama-3.1-8b-instant">llama-3.1-8b-instant (faster)</option>
+                </select>
+            </div>
+
+            <!-- Microphone -->
+            <div class="section">
+                <label>Microphone</label>
+                <select id="micDevice" onchange="saveMicDevice()" class="form-control">
+                    <option value="default">System Default</option>
+                </select>
+            </div>
+
+            <!-- AI Prompt -->
+            <div class="section">
+                <label>AI Prompt (System Message)</label>
+                <textarea id="aiPrompt" rows="3" placeholder="Custom instructions for text refinement..."
+                    class="form-control"></textarea>
+                <div style="text-align: right; margin-top: 10px;">
+                    <button onclick="savePrompt()">Save Prompt</button>
+                </div>
+            </div>
+
+            <!-- Startup -->
+            <div class="section flex-between">
+                <span style="font-weight: 500;">Run on Windows Startup</span>
+                <label class="flex-row" style="margin: 0; cursor: pointer;">
+                    <input type="checkbox" id="startupToggle" onchange="toggleStartup()" style="width: auto;">
+                    <span>Enable</span>
+                </label>
+            </div>
+
+            <!-- History -->
+            <div class="section">
+                <div class="flex-between" style="margin-bottom: 10px;">
+                    <label style="margin: 0;">Transcription History</label>
+                    <button onclick="clearHistory()"
+                        style="background: transparent; color: #f87171; padding: 0; font-size: 12px;">Clear</button>
+                </div>
+                <div id="historyList" class="history-list">
+                    <div style="text-align: center; color: var(--text-muted); padding: 20px;">No history yet.</div>
+                </div>
+            </div>
+
+            <!-- Offline Mode -->
+            <div class="section"
+                style="margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--border-color);">
+                <label>Offline Whisper</label>
+
+                <!-- Online/Offline Status -->
+                <div id="connectionStatus"
+                    style="margin-bottom: 15px; padding: 10px; border-radius: 8px; text-align: center;">
+                    Checking connection...
+                </div>
+
+                <!-- Whisper Status -->
+                <div id="whisperSection">
+                    <div id="whisperNotInstalled">
+                        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 15px;">
+                            Install offline transcription for use without internet. Uses GPU acceleration if available.
+                        </p>
+                        <div style="margin-bottom: 15px;">
+                            <label style="font-size: 12px;">Model Size:</label>
+                            <select id="whisperModelSelect" style="margin-top: 5px;" class="form-control">
+                                <option value="tiny">Tiny (75 MB) - Fastest</option>
+                                <option value="base">Base (150 MB) - Fast</option>
+                                <option value="small" selected>Small (500 MB) - Recommended</option>
+                                <option value="medium">Medium (1.5 GB) - High Quality</option>
+                            </select>
+                        </div>
+                        <button onclick="installWhisper()" id="installBtn"
+                            style="background: linear-gradient(135deg, #6366f1, #8b5cf6); padding: 12px 24px; font-size: 14px; width: 100%;">
+                            🚀 Install Offline Whisper
+                        </button>
+                    </div>
+
+                    <div id="whisperInstalled" style="display: none;">
+                        <div
+                            style="background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 8px; padding: 15px; margin-bottom: 15px;">
+                            <div style="color: #22c55e; font-weight: 500;">✓ Offline Whisper Installed</div>
+                            <div style="font-size: 12px; color: var(--text-muted); margin-top: 5px;">
+                                Model: <span id="installedModel">-</span>
+                            </div>
+                        </div>
+                        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 15px;">
+                            Select "Local - Whisper" in the Whisper Model dropdown above to use offline transcription.
+                        </p>
+                        <button onclick="uninstallWhisper()"
+                            style="background: transparent; border: 1px solid #f87171; color: #f87171; padding: 10px 20px; font-size: 13px;">
+                            🗑️ Uninstall Offline Whisper
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script type="module">
+        let apiKeyVisible = false;
+
+        // Toggle API key visibility
+        window.toggleApiKey = function () {
+            const input = document.getElementById('apiKey');
+            const btn = document.getElementById('eyeBtn');
+            apiKeyVisible = !apiKeyVisible;
+            input.type = apiKeyVisible ? 'text' : 'password';
+            btn.textContent = apiKeyVisible ? '🙈' : '👁️';
+        };
+
+        // Record shortcut
+        window.recordShortcut = function () {
+            const btn = document.getElementById('recordBtn');
+            const input = document.getElementById('shortcutInput');
+
+            btn.textContent = 'Recording...';
+            btn.disabled = true;
+            input.value = '';
+
+            let lastShortcut = '';
+
+            const keydownHandler = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const mods = [];
+                if (e.ctrlKey) mods.push('ctrl');
+                if (e.altKey) mods.push('alt');
+                if (e.shiftKey) mods.push('shift');
+                if (e.metaKey || e.key === 'Meta' || e.key === 'OS') mods.push('win');
+
+                let key = e.key.toLowerCase();
+                if (key === 'control') key = 'ctrl';
+                if (key === 'alt') key = 'alt';
+                if (key === 'shift') key = 'shift';
+                if (key === 'meta' || key === 'os') key = 'win';
+                if (key === ' ') key = 'space';
+
+                const parts = new Set(mods);
+                parts.add(key);
+
+                // Order them: modifiers first, then the latest key
+                const partsArray = Array.from(parts).filter(p => p !== key);
+                partsArray.push(key);
+
+                lastShortcut = partsArray.join('+');
+                input.value = lastShortcut;
+
+                // Finalize immediately if a non-modifier key is pressed
+                if (!['ctrl', 'alt', 'shift', 'win'].includes(key)) {
+                    finish();
+                }
+            };
+
+            const keyupHandler = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                // Finalize when keys are released if we have a valid shortcut
+                if (lastShortcut) {
+                    // Check if it's a modifier-only shortcut that we should finalize
+                    const isModifierOnly = lastShortcut.split('+').every(p => ['ctrl', 'alt', 'shift', 'win'].includes(p));
+                    if (isModifierOnly && lastShortcut.includes('+')) {
+                        // Wait a tiny bit to see if they press another key, but usually release means they are done
+                        setTimeout(finish, 100);
+                    } else if (!e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) {
+                        finish();
+                    }
+                }
+            };
+
+            const finish = () => {
+                if (!lastShortcut) {
+                    btn.textContent = 'Record';
+                    btn.disabled = false;
+                    cleanup();
+                    return;
+                }
+
+                window.go.main.App.SaveSettings({ shortcut: lastShortcut }).then(() => {
+                    btn.textContent = 'Record';
+                    btn.disabled = false;
+                    cleanup();
+                });
+            };
+
+            const cleanup = () => {
+                window.removeEventListener('keydown', keydownHandler, true);
+                window.removeEventListener('keyup', keyupHandler, true);
+            };
+
+            window.addEventListener('keydown', keydownHandler, true);
+            window.addEventListener('keyup', keyupHandler, true);
+        };
+
+        // Load settings on page load
+        async function loadSettings() {
+            try {
+                const settings = await window.go.main.App.GetSettings();
+
+                document.getElementById('apiKey').value = settings.api_key || '';
+                document.getElementById('shortcutInput').value = settings.shortcut || 'alt+z';
+                document.getElementById('whisperModel').value = settings.whisper_model || 'whisper-large-v3-turbo';
+                document.getElementById('aiModel').value = settings.ai_model || 'llama-3.3-70b-versatile';
+                document.getElementById('aiPrompt').value = settings.ai_prompt || '';
+                document.getElementById('language').value = settings.language || 'en';
+                document.getElementById('startupToggle').checked = settings.startup || false;
+
+                // History
+                const history = settings.history || [];
+                const container = document.getElementById('historyList');
+                if (history.length > 0) {
+                    container.innerHTML = '';
+                    [...history].reverse().forEach(item => {
+                        const el = document.createElement('div');
+                        el.className = 'history-item';
+
+                        const time = document.createElement('span');
+                        time.className = 'history-time';
+                        time.textContent = new Date(item.timestamp).toLocaleString(undefined, {
+                            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                        });
+
+                        const text = document.createElement('div');
+                        text.textContent = item.text;
+
+                        el.appendChild(time);
+                        el.appendChild(text);
+                        container.appendChild(el);
+                    });
+                }
+            } catch (err) {
+                console.error("Failed to load settings:", err);
+            }
+        }
+
+        // Load mics
+        async function loadMics() {
+            try {
+                const mics = await window.go.main.App.GetMicrophones();
+                const select = document.getElementById('micDevice');
+                mics.forEach(mic => {
+                    if (mic.index !== -1) {
+                        const opt = document.createElement('option');
+                        opt.value = mic.index;
+                        opt.textContent = mic.name;
+                        select.appendChild(opt);
+                    }
+                });
+            } catch (err) {
+                console.error("Failed to load mics:", err);
+            }
+        }
+
+        // Save functions
+        window.saveApiKey = async function () {
+            const key = document.getElementById('apiKey').value.trim();
+            await window.go.main.App.SaveSettings({ api_key: key });
+            showSaveStatus();
+        };
+
+        function showSaveStatus(message = 'Settings Saved!') {
+            const el = document.getElementById('saveStatus');
+            el.textContent = message;
+            el.classList.add('show');
+            setTimeout(() => el.classList.remove('show'), 2000);
+        }
+
+        window.saveWhisperModel = async function () {
+            await window.go.main.App.SaveSettings({ whisper_model: document.getElementById('whisperModel').value });
+            showSaveStatus();
+        };
+
+        window.saveAiModel = async function () {
+            await window.go.main.App.SaveSettings({ ai_model: document.getElementById('aiModel').value });
+            showSaveStatus();
+        };
+
+        window.saveLanguage = async function () {
+            await window.go.main.App.SaveSettings({ language: document.getElementById('language').value });
+            showSaveStatus('Language Saved!');
+        };
+
+        window.saveMicDevice = async function () {
+            const val = document.getElementById('micDevice').value;
+            await window.go.main.App.SaveSettings({ microphone_device: val === 'default' ? null : parseInt(val) });
+            showSaveStatus();
+        };
+
+        window.savePrompt = async function () {
+            await window.go.main.App.SaveSettings({ ai_prompt: document.getElementById('aiPrompt').value.trim() });
+            showSaveStatus('Prompt Saved!');
+        };
+
+        window.toggleStartup = async function () {
+            await window.go.main.App.ToggleStartup(document.getElementById('startupToggle').checked);
+        };
+
+        window.clearHistory = async function () {
+            if (confirm('Clear all history?')) {
+                await window.go.main.App.ClearHistory();
+                document.getElementById('historyList').innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">No history yet.</div>';
+            }
+        };
+
+        // Check connection status
+        async function checkConnection() {
+            try {
+                const isOnline = await window.go.main.App.CheckOnline();
+                const statusEl = document.getElementById('connectionStatus');
+
+                if (isOnline) {
+                    statusEl.innerHTML = '🟢 Online - Cloud transcription available';
+                    statusEl.style.background = 'rgba(34, 197, 94, 0.1)';
+                    statusEl.style.color = '#22c55e';
+                } else {
+                    statusEl.innerHTML = '🔴 Offline - Install local Whisper for transcription';
+                    statusEl.style.background = 'rgba(239, 68, 68, 0.1)';
+                    statusEl.style.color = '#ef4444';
+
+                    // Disable cloud AI options when offline
+                    const aiSelect = document.getElementById('aiModel');
+                    const whisperSelect = document.getElementById('whisperModel');
+
+                    // Add offline notice to options
+                    for (let opt of aiSelect.options) {
+                        if (opt.value !== 'None' && !opt.value.startsWith('local-')) {
+                            opt.disabled = true;
+                            if (!opt.text.includes('(offline)')) {
+                                opt.text += ' (offline)';
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('Connection check failed:', err);
+            }
+        }
+
+        // Check whisper installation status
+        async function checkWhisperStatus() {
+            try {
+                const info = await window.go.main.App.GetWhisperInfo();
+                const whisperSelect = document.getElementById('whisperModel');
+
+                // Remove any existing local option
+                const existingLocal = whisperSelect.querySelector('option[value^="local-"]');
+                if (existingLocal) existingLocal.remove();
+
+                if (info.installed) {
+                    document.getElementById('whisperNotInstalled').style.display = 'none';
+                    document.getElementById('whisperInstalled').style.display = 'block';
+                    document.getElementById('installedModel').textContent = info.model + ' model';
+
+                    // Add local option to whisper dropdown
+                    const localOption = document.createElement('option');
+                    localOption.value = 'local-' + info.model;
+                    localOption.textContent = '🖥️ Local - ' + info.model + ' (offline)';
+                    localOption.style.fontWeight = 'bold';
+                    whisperSelect.insertBefore(localOption, whisperSelect.firstChild);
+                } else {
+                    document.getElementById('whisperNotInstalled').style.display = 'block';
+                    document.getElementById('whisperInstalled').style.display = 'none';
+                }
+            } catch (err) {
+                console.error('Whisper status check failed:', err);
+            }
+        }
+
+        // Install whisper
+        window.installWhisper = async function () {
+            const model = document.getElementById('whisperModelSelect').value;
+            const btn = document.getElementById('installBtn');
+
+            btn.disabled = true;
+            btn.textContent = 'Starting installation...';
+
+            try {
+                const result = await window.go.main.App.InstallWhisper(model);
+                alert(result + '\n\nA terminal window will open showing the installation progress. This may take several minutes depending on your internet speed.');
+
+                // Check status after a delay
+                setTimeout(checkWhisperStatus, 5000);
+            } catch (err) {
+                alert('Installation failed: ' + err);
+            }
+
+            btn.disabled = false;
+            btn.textContent = '🚀 Install Offline Whisper';
+        };
+
+        // Uninstall whisper
+        window.uninstallWhisper = async function () {
+            if (!confirm('Are you sure you want to uninstall offline Whisper? This will delete the downloaded model.')) {
+                return;
+            }
+
+            try {
+                const result = await window.go.main.App.UninstallWhisper();
+                alert(result);
+                checkWhisperStatus();
+            } catch (err) {
+                alert('Uninstall failed: ' + err);
+            }
+        };
+
+        // Init
+        loadSettings();
+        loadMics();
+        checkConnection();
+        checkWhisperStatus();
+    </script>
+</body>
+
+</html>

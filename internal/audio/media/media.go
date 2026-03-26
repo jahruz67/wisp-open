@@ -1,0 +1,103 @@
+package media
+
+import (
+	_ "embed"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"syscall"
+	"wis-free-v3/internal/logger"
+)
+
+var (
+	user32      = syscall.NewLazyDLL("user32.dll")
+	keybd_event = user32.NewProc("keybd_event")
+)
+
+//go:embed check-media.ps1
+var checkMediaScript []byte
+
+const (
+	KEYEVENTF_KEYUP     = 0x0002
+	VK_MEDIA_PLAY_PAUSE = 0xB3
+)
+
+// sendKey sends a Windows virtual key code
+func sendKey(key byte) {
+	keybd_event.Call(
+		uintptr(key),
+		0,
+		0,
+		0,
+	)
+	keybd_event.Call(
+		uintptr(key),
+		0,
+		uintptr(KEYEVENTF_KEYUP),
+		0,
+	)
+}
+
+// IsPlaying checks if media is currently playing using PowerShell SMTC query
+func IsPlaying() bool {
+	// Write script to temp file
+	tempDir := os.TempDir()
+	scriptPath := filepath.Join(tempDir, "wis_check_media.ps1")
+
+	// Always write to ensure latest version
+	err := os.WriteFile(scriptPath, checkMediaScript, 0644)
+	if err != nil {
+		logger.Error("Failed to write media check script: %v", err)
+		return false
+	}
+
+	cmd := exec.Command("powershell.exe",
+		"-NoProfile",
+		"-NonInteractive",
+		"-WindowStyle", "Hidden",
+		"-ExecutionPolicy", "Bypass",
+		"-File", scriptPath,
+	)
+
+	// Hide window completely
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		HideWindow:    true,
+		CreationFlags: 0x08000000, // CREATE_NO_WINDOW
+	}
+
+	err = cmd.Run()
+
+	// Exit code 0 = not playing, Exit code 1 = playing
+	if err == nil {
+		return false // Exit code 0
+	}
+
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		return exitErr.ExitCode() == 1
+	}
+
+	return false
+}
+
+// TogglePlayPause sends the play/pause toggle key
+func TogglePlayPause() {
+	sendKey(VK_MEDIA_PLAY_PAUSE)
+}
+
+// PauseMedia checks if playing, pauses if so, returns whether we paused
+func PauseMedia() bool {
+	wasPlaying := IsPlaying()
+	if wasPlaying {
+		TogglePlayPause()
+	}
+	return wasPlaying
+}
+
+// ResumeMedia resumes only if we paused it
+func ResumeMedia(wasPaused bool) {
+	if wasPaused {
+		TogglePlayPause()
+	}
+}
+
+
