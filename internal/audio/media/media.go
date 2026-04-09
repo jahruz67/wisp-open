@@ -40,15 +40,16 @@ func sendKey(key byte) {
 
 // IsPlaying checks if media is currently playing using PowerShell SMTC query
 func IsPlaying() bool {
-	// Write script to temp file
+	// Write script to temp file only if it doesn't exist
 	tempDir := os.TempDir()
-	scriptPath := filepath.Join(tempDir, "wis_check_media.ps1")
+	scriptPath := filepath.Join(tempDir, "wis_check_media_v2.ps1")
 
-	// Always write to ensure latest version
-	err := os.WriteFile(scriptPath, checkMediaScript, 0644)
-	if err != nil {
-		logger.Error("Failed to write media check script: %v", err)
-		return false
+	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
+		err = os.WriteFile(scriptPath, checkMediaScript, 0644)
+		if err != nil {
+			logger.Error("Failed to write media check script: %v", err)
+			return false
+		}
 	}
 
 	cmd := exec.Command("powershell.exe",
@@ -59,13 +60,13 @@ func IsPlaying() bool {
 		"-File", scriptPath,
 	)
 
-	// Hide window completely
+	// Hide window completely to prevent any flickering console
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,
-		CreationFlags: 0x08000000, // CREATE_NO_WINDOW
+		CreationFlags: 0x08000000 | 0x00000200, // CREATE_NO_WINDOW | DETACHED_PROCESS
 	}
 
-	err = cmd.Run()
+	err := cmd.Run()
 
 	// Exit code 0 = not playing, Exit code 1 = playing
 	if err == nil {

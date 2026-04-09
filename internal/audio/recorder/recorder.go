@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"math"
+	"unsafe"
 	"wis-free-v3/internal/logger"
 
 	"github.com/gen2brain/malgo"
@@ -138,38 +139,50 @@ func (r *AudioRecorder) Start(filename string) error {
 		return fmt.Errorf("failed to write WAV header: %w", err)
 	}
 
-	// Configure audio callback
-	callbacks := malgo.DeviceCallbacks{
-		Data: r.onAudioData,
-	}
-
-	// Use custom device if specified
+	// Determine device ID pointer
+	var targetDeviceID unsafe.Pointer
 	if r.deviceID != nil {
-		// Enumerate devices to find the matching pointer
 		devices, err := r.ctx.Context.Devices(malgo.Capture)
 		if err == nil {
 			for _, info := range devices {
 				if fmt.Sprintf("%v", info.ID) == *r.deviceID {
-					r.deviceConfig.Capture.DeviceID = info.ID.Pointer()
+					targetDeviceID = info.ID.Pointer()
 					break
 				}
 			}
 		}
-	} else {
-		r.deviceConfig.Capture.DeviceID = nil
 	}
 
-	// Initialize device
-	device, err := malgo.InitDevice(r.ctx.Context, r.deviceConfig, callbacks)
-	if err != nil {
-		file.Close()
-		return fmt.Errorf("failed to initialize audio device: %w", err)
+	// Check if we need to re-initialize the device
+	configChanged := false
+	if r.deviceConfig.Capture.DeviceID != targetDeviceID {
+		configChanged = true
 	}
-	r.device = device
+
+	if r.device != nil && configChanged {
+		logger.Info("Audio device config changed, re-initializing...")
+		r.device.Uninit()
+		r.device = nil
+	}
+
+	if r.device == nil {
+		r.deviceConfig.Capture.DeviceID = targetDeviceID
+		callbacks := malgo.DeviceCallbacks{
+			Data: r.onAudioData,
+		}
+		device, err := malgo.InitDevice(r.ctx.Context, r.deviceConfig, callbacks)
+		if err != nil {
+			file.Close()
+			return fmt.Errorf("failed to initialize audio device: %w", err)
+		}
+		r.device = device
+		logger.Info("Audio device initialized")
+	}
 
 	// Start capturing
-	if err := device.Start(); err != nil {
-		device.Uninit()
+	if err := r.device.Start(); err != nil {
+		r.device.Uninit()
+		r.device = nil
 		file.Close()
 		return fmt.Errorf("failed to start audio capture: %w", err)
 	}
@@ -188,10 +201,14 @@ func (r *AudioRecorder) Stop() error {
 		return nil
 	}
 
-	// Stop and cleanup device
+	// Stop device capture without uninitializing hardware
 	if r.device != nil {
-		r.device.Uninit()
-		r.device = nil
+		if err := r.device.Stop(); err != nil {
+			logger.Error("Failed to stop audio device: %v", err)
+			// On failure, it might be safer to uninit
+			r.device.Uninit()
+			r.device = nil
+		}
 	}
 
 	// Finalize WAV file

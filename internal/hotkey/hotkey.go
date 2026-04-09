@@ -148,11 +148,11 @@ func (l *Listener) handleKeyEvent(ev hook.Event, pressedKeys map[uint16]bool, is
 
 	if active && !*isRecording {
 		logger.Info("Shortcut activated: starting recording")
-		l.startCallback()
+		go l.startCallback()
 		*isRecording = true
 	} else if !active && *isRecording {
 		logger.Info("Shortcut released: stopping recording")
-		l.stopCallback()
+		go l.stopCallback()
 		*isRecording = false
 	}
 }

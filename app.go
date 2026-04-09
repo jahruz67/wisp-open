@@ -87,54 +87,55 @@ func (a *App) Quit() {
 func (a *App) StartRecording() {
 	logger.Info("StartRecording triggered")
 
-	// Pause media if playing
-	a.wasMediaPlaying = media.PauseMedia()
-	if a.wasMediaPlaying {
-		logger.Info("Media paused for recording")
-	}
-
-	tray.UpdateStatus("Recording...")
+	// 1. Show overlay immediately (most visible feedback)
 	if a.overlay != nil {
 		a.overlay.Show("Recording...")
 	}
 
+	// 2. Start recorder as soon as possible
 	if a.audioRecorder == nil {
 		logger.Error("Recorder not initialized")
-		tray.UpdateStatus("Ready")
 		if a.overlay != nil {
 			a.overlay.Hide()
 		}
 		return
 	}
 
-	// Save to a temporary file
+	// Prepare path
 	tempDir := os.TempDir()
 	timestamp := time.Now().Format("20060102_150405")
 	a.recordingPath = filepath.Join(tempDir, fmt.Sprintf("wis_recording_%s.wav", timestamp))
 
-	err := a.audioRecorder.Start(a.recordingPath)
-	if err != nil {
-		logger.Error("Failed to start recording with primary device: %v", err)
-
-		// IDIOT-PROOFING: Fallback to default microphone if the selected one fails
-		if a.config.MicrophoneDevice != nil {
-			logger.Info("Attempting fallback to default microphone...")
-			a.audioRecorder.SetDevice("") // Reset to default
-			err = a.audioRecorder.Start(a.recordingPath)
-		}
-
+	// Start recording (now faster due to device reuse)
+	go func() {
+		err := a.audioRecorder.Start(a.recordingPath)
 		if err != nil {
-			logger.Error("Recording completely failed: %v", err)
-			tray.UpdateStatus("Ready")
-			if a.overlay != nil {
-				a.overlay.Hide()
+			logger.Error("Failed to start recording: %v", err)
+			// IDIOT-PROOFING: Fallback to default
+			if a.config.MicrophoneDevice != nil {
+				a.audioRecorder.SetDevice("")
+				err = a.audioRecorder.Start(a.recordingPath)
 			}
-			// Resume media if we paused it
-			media.ResumeMedia(a.wasMediaPlaying)
-			return
+			if err != nil {
+				if a.overlay != nil {
+					a.overlay.Hide()
+				}
+				return
+			}
 		}
-		logger.Info("Fallback successful - using default microphone")
-	}
+	}()
+
+	// 3. Handle secondary tasks in background
+	go func() {
+		// Update tray status
+		tray.UpdateStatus("Recording...")
+
+		// Pause media if playing (this is slow due to PowerShell)
+		a.wasMediaPlaying = media.PauseMedia()
+		if a.wasMediaPlaying {
+			logger.Info("Media paused for recording")
+		}
+	}()
 }
 
 // StopRecording stops the audio recording and triggers transcription

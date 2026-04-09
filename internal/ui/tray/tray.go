@@ -68,13 +68,13 @@ func handleMenuEvents(app App, settings, startupItem, exit *systray.MenuItem) {
 	for {
 		select {
 		case <-settings.ClickedCh:
-			app.ShowSettings()
+			go app.ShowSettings()
 
 		case <-startupItem.ClickedCh:
-			toggleStartup(startupItem)
+			go toggleStartup(startupItem)
 
 		case <-exit.ClickedCh:
-			handleExit(app)
+			go handleExit(app)
 		}
 	}
 }
