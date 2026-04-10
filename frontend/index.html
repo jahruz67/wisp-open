@@ -108,7 +108,7 @@
 
             <!-- Startup -->
             <div class="section flex-between">
-                <span style="font-weight: 500;">Run on Windows Startup</span>
+                <span id="startupLabel" style="font-weight: 500;">Run on System Startup</span>
                 <label class="flex-row" style="margin: 0; cursor: pointer;">
                     <input type="checkbox" id="startupToggle" onchange="toggleStartup()" style="width: auto;">
                     <span>Enable</span>
@@ -128,7 +128,7 @@
             </div>
 
             <!-- Offline Mode -->
-            <div class="section"
+            <div id="offlineWhisperSection" class="section"
                 style="margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--border-color);">
                 <label>Offline Whisper</label>
 
@@ -489,10 +489,44 @@
         };
 
         // Init
-        loadSettings();
-        loadMics();
-        checkConnection();
-        checkWhisperStatus();
+        async function initialize() {
+            // Check platform definitively using userAgent to guarantee it fires immediately without Wails timing issues
+            try {
+                const isLinux = navigator.userAgent.toLowerCase().includes('linux');
+                if (isLinux) {
+                    // Hide Offline Whisper section
+                    const offlineSection = document.getElementById('offlineWhisperSection');
+                    if (offlineSection) {
+                        offlineSection.style.display = 'none';
+                    }
+                    
+                    // Clean up 'Windows' reference in startup text specifically for Linux OS
+                    const startupLabel = document.getElementById('startupLabel');
+                    if (startupLabel) {
+                        startupLabel.innerText = 'Run on Linux OS Startup';
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to get environment:', err);
+            }
+
+            await loadSettings();
+            await loadMics();
+            await checkConnection();
+            await checkWhisperStatus();
+            
+            // If Linux, ensure Local Whisper option is removed from Whisper Select as a secondary guard
+            if (navigator.userAgent.toLowerCase().includes('linux')) {
+                const whisperSelect = document.getElementById('whisperModel');
+                if (whisperSelect) {
+                    Array.from(whisperSelect.options).forEach(opt => {
+                        if (opt.value.startsWith('local-')) opt.remove();
+                    });
+                }
+            }
+        }
+
+        initialize();
     </script>
 </body>
 

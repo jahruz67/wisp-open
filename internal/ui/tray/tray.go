@@ -5,6 +5,7 @@ package tray
 import (
 	_ "embed"
 	"os"
+	"strings"
 
 	"wis-free-v3/internal/config"
 	"wis-free-v3/internal/logger"
@@ -15,6 +16,12 @@ import (
 
 //go:embed icon.ico
 var iconData []byte
+
+//go:embed icon_recording.png
+var iconRecordingData []byte
+
+//go:embed icon_transcribing.png
+var iconTranscribingData []byte
 
 // App defines the interface required by the tray package to interact with the main application.
 type App interface {
@@ -120,6 +127,14 @@ func UpdateStatus(status string) {
 	if statusMenuItem != nil {
 		statusMenuItem.SetTitle("Status: " + status)
 		systray.SetTooltip("wis-free-v3 - " + status)
+
+		if strings.Contains(status, "Recording") {
+			systray.SetIcon(iconRecordingData)
+		} else if strings.Contains(status, "Transcribing") {
+			systray.SetIcon(iconTranscribingData)
+		} else {
+			systray.SetIcon(iconData)
+		}
 	}
 }
 

@@ -20,7 +20,6 @@ import (
 
 	"github.com/go-vgo/robotgo"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
-	"golang.design/x/clipboard"
 )
 
 // App struct
@@ -105,24 +104,22 @@ func (a *App) StartRecording() {
 	timestamp := time.Now().Format("20060102_150405")
 	a.recordingPath = filepath.Join(tempDir, fmt.Sprintf("wis_recording_%s.wav", timestamp))
 
-	// Start recording (now faster due to device reuse)
-	go func() {
-		err := a.audioRecorder.Start(a.recordingPath)
-		if err != nil {
-			logger.Error("Failed to start recording: %v", err)
-			// IDIOT-PROOFING: Fallback to default
-			if a.config.MicrophoneDevice != nil {
-				a.audioRecorder.SetDevice("")
-				err = a.audioRecorder.Start(a.recordingPath)
-			}
-			if err != nil {
-				if a.overlay != nil {
-					a.overlay.Hide()
-				}
-				return
-			}
+	// Start recording
+	err := a.audioRecorder.Start(a.recordingPath)
+	if err != nil {
+		logger.Error("Failed to start recording: %v", err)
+		// IDIOT-PROOFING: Fallback to default
+		if a.config.MicrophoneDevice != nil {
+			a.audioRecorder.SetDevice("")
+			err = a.audioRecorder.Start(a.recordingPath)
 		}
-	}()
+		if err != nil {
+			if a.overlay != nil {
+				a.overlay.Hide()
+			}
+			return
+		}
+	}
 
 	// 3. Handle secondary tasks in background
 	go func() {
@@ -241,7 +238,7 @@ func (a *App) processRecording() {
 	config.Save(a.config, "")
 
 	// Copy to clipboard
-	clipboard.Write(clipboard.FmtText, []byte(refinedText))
+	runtime.ClipboardSetText(a.ctx, refinedText)
 
 	// Paste
 	a.pasteText()
@@ -260,13 +257,11 @@ func (a *App) processRecording() {
 
 // pasteText simulates Ctrl+V to paste from clipboard
 func (a *App) pasteText() {
-	// Give a small delay for clipboard to update
-	time.Sleep(100 * time.Millisecond)
+	// Give a substantial delay for Linux GTK clipboard sync
+	time.Sleep(200 * time.Millisecond)
 
-	// Simulate Ctrl+V
-	robotgo.KeyToggle("control", "down")
-	robotgo.KeyTap("v")
-	robotgo.KeyToggle("control", "up")
+	// Simulate Ctrl+V using modern robotgo API
+	robotgo.KeyTap("v", "ctrl")
 }
 
 // GetSettings returns the current configuration
@@ -291,8 +286,8 @@ func (a *App) SaveSettings(settings map[string]interface{}) string {
 	}
 	if val, ok := settings["shortcut"].(string); ok {
 		// Validate shortcut before applying
-		trigger, _ := hotkey.ParseShortcut(val)
-		if len(trigger) == 0 {
+		_, _, ok := hotkey.ParseShortcut(val)
+		if !ok {
 			logger.Error("Invalid shortcut: %s (rejected)", val)
 			return "Invalid shortcut - must have at least one modifier and a regular key"
 		}
@@ -403,12 +398,6 @@ func (a *App) startupHeadless() {
 		fmt.Printf("Failed to initialize logger: %v\n", err)
 	}
 
-	// Initialize clipboard
-	err = clipboard.Init()
-	if err != nil {
-		logger.Error("Failed to initialize clipboard: %v", err)
-	}
-
 	// Load configuration
 	configPath, err := config.GetConfigPath()
 	if err != nil {
@@ -422,43 +411,44 @@ func (a *App) startupHeadless() {
 		}
 	}
 
-	// Initialize heavy components in background for instant startup
-	go func() {
-		// Initialize transcriber
-		a.transcriber = transcriber.NewClient(
-			a.config.APIKey,
-			a.config.WhisperModel,
-			a.config.AIModel,
-			a.config.AIPrompt,
-		)
+	// Initialize heavy components synchronously instead of in background.
+	// This prevents a known ALSA/GTK initialization race condition bug on Linux
+	// where Miniaudio and GTK try to probe audio devices concurrently resulting in SIGABRT.
 
-		// Initialize whisper manager
-		a.whisperManager, _ = whisper.NewManager()
+	// Initialize transcriber
+	a.transcriber = transcriber.NewClient(
+		a.config.APIKey,
+		a.config.WhisperModel,
+		a.config.AIModel,
+		a.config.AIPrompt,
+	)
 
-		// Initialize Audio Recorder
-		rec, err := recorder.NewRecorder()
-		if err != nil {
-			logger.Error("Error initializing recorder: %v", err)
-		} else {
-			a.audioRecorder = rec
+	// Initialize whisper manager
+	a.whisperManager, _ = whisper.NewManager()
+
+	// Initialize Audio Recorder
+	rec, err := recorder.NewRecorder()
+	if err != nil {
+		logger.Error("Error initializing recorder: %v", err)
+	} else {
+		a.audioRecorder = rec
+	}
+
+	// Initialize Overlay
+	a.overlay = platform.NewOverlay()
+
+	// Connect volume feedback from recorder to overlay
+	if a.audioRecorder != nil && a.overlay != nil {
+		a.audioRecorder.OnVolume = func(level float64) {
+			a.overlay.SetVolume(level)
 		}
+	}
 
-		// Initialize Overlay
-		a.overlay = platform.NewOverlay()
+	// Initialize Hotkey Listener
+	a.hotkeyListener = hotkey.NewListener(a.config.Shortcut, a.StartRecording, a.StopRecording)
+	a.hotkeyListener.Start()
 
-		// Connect volume feedback from recorder to overlay
-		if a.audioRecorder != nil && a.overlay != nil {
-			a.audioRecorder.OnVolume = func(level float64) {
-				a.overlay.SetVolume(level)
-			}
-		}
-
-		// Initialize Hotkey Listener
-		a.hotkeyListener = hotkey.NewListener(a.config.Shortcut, a.StartRecording, a.StopRecording)
-		a.hotkeyListener.Start()
-
-		logger.Info("Background components initialized successfully!")
-	}()
+	logger.Info("Components initialized successfully!")
 
 	logger.Info("Basic app components loaded, continuing startup...")
 }

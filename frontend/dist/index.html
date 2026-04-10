@@ -6,8 +6,8 @@
     <meta content="width=device-width, initial-scale=1.0" name="viewport">
     <title>wis-free-v3 Settings</title>
     
-  <script type="module" crossorigin src="/assets/index.33b5a8c3.js"></script>
-  <link rel="stylesheet" href="/assets/index.9197445a.css">
+  <script type="module" crossorigin src="/assets/index.c6252eaf.js"></script>
+  <link rel="stylesheet" href="/assets/index.d8635aeb.css">
 </head>
 
 <body>
@@ -110,7 +110,7 @@
 
             <!-- Startup -->
             <div class="section flex-between">
-                <span style="font-weight: 500;">Run on Windows Startup</span>
+                <span id="startupLabel" style="font-weight: 500;">Run on System Startup</span>
                 <label class="flex-row" style="margin: 0; cursor: pointer;">
                     <input type="checkbox" id="startupToggle" onchange="toggleStartup()" style="width: auto;">
                     <span>Enable</span>
@@ -130,7 +130,7 @@
             </div>
 
             <!-- Offline Mode -->
-            <div class="section"
+            <div id="offlineWhisperSection" class="section"
                 style="margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--border-color);">
                 <label>Offline Whisper</label>
 

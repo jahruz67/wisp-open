@@ -50,8 +50,8 @@ if command_exists pkg-config; then
         echo "[WARNING] Missing Wails dependencies (GTK3 / WebKit2GTK)."
         MISSING_DEPS=1
     fi
-    if ! pkg-config --exists x11 xtst xcb; then
-        echo "[WARNING] Missing gohook dependencies (X11 / Xtst / Xcb)."
+    if ! pkg-config --exists x11 xtst xcb xkbcommon-x11; then
+        echo "[WARNING] Missing gohook dependencies (X11 / Xtst / Xcb / Xkbcommon)."
         MISSING_DEPS=1
     fi
     if ! pkg-config --exists alsa; then
@@ -92,6 +92,12 @@ fi
 
 # 3. Build the application
 echo "[2/3] Building with Wails..."
+
+# Pre-emptively fix npm bin permissions if they got messed up (common issue on some systems)
+if [ -d "frontend/node_modules/.bin" ]; then
+    chmod +x frontend/node_modules/.bin/* 2>/dev/null || true
+fi
+
 wails build -platform linux/amd64 -clean
 
 if [ ! -f "$EXECUTABLE" ]; then
