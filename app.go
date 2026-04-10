@@ -8,15 +8,14 @@ import (
 	"strings"
 	"time"
 
-	"wis-free-v3/internal/audio/media"
+
 	"wis-free-v3/internal/audio/recorder"
 	"wis-free-v3/internal/config"
 	"wis-free-v3/internal/hotkey"
 	"wis-free-v3/internal/logger"
+	"wis-free-v3/internal/platform"
 	"wis-free-v3/internal/services/transcriber"
 	"wis-free-v3/internal/services/whisper"
-	"wis-free-v3/internal/system/startup"
-	"wis-free-v3/internal/ui/overlay"
 	"wis-free-v3/internal/ui/tray"
 
 	"github.com/go-vgo/robotgo"
@@ -31,7 +30,7 @@ type App struct {
 	hotkeyListener  *hotkey.Listener
 	transcriber     *transcriber.Client
 	config          *config.Config
-	overlay         *overlay.Overlay
+	overlay         platform.Overlay
 	recordingPath   string
 	isQuitting      bool
 	wasMediaPlaying bool
@@ -131,7 +130,7 @@ func (a *App) StartRecording() {
 		tray.UpdateStatus("Recording...")
 
 		// Pause media if playing (this is slow due to PowerShell)
-		a.wasMediaPlaying = media.PauseMedia()
+		a.wasMediaPlaying = platform.PauseMedia()
 		if a.wasMediaPlaying {
 			logger.Info("Media paused for recording")
 		}
@@ -143,7 +142,7 @@ func (a *App) StopRecording() {
 	logger.Info("StopRecording triggered")
 
 	// Resume media if it was playing before
-	media.ResumeMedia(a.wasMediaPlaying)
+	platform.ResumeMedia(a.wasMediaPlaying)
 	if a.wasMediaPlaying {
 		logger.Info("Media resumed after recording")
 	}
@@ -281,7 +280,7 @@ func (a *App) GetSettings() map[string]interface{} {
 	conf["language"] = a.config.Language
 	conf["microphone_device"] = a.config.MicrophoneDevice
 	conf["history"] = a.config.History
-	conf["startup"] = startup.IsInStartup()
+	conf["startup"] = platform.IsInStartup()
 	return conf
 }
 
@@ -377,9 +376,9 @@ func (a *App) GetMicrophones() []map[string]interface{} {
 func (a *App) ToggleStartup(enable bool) string {
 	var err error
 	if enable {
-		err = startup.AddToStartup()
+		err = platform.AddToStartup()
 	} else {
-		err = startup.RemoveFromStartup()
+		err = platform.RemoveFromStartup()
 	}
 
 	if err != nil {
@@ -445,7 +444,7 @@ func (a *App) startupHeadless() {
 		}
 
 		// Initialize Overlay
-		a.overlay = overlay.NewOverlay()
+		a.overlay = platform.NewOverlay()
 
 		// Connect volume feedback from recorder to overlay
 		if a.audioRecorder != nil && a.overlay != nil {

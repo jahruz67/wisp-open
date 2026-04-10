@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"wis-free-v3/internal/logger"
@@ -285,11 +284,8 @@ func (m *Manager) Transcribe(audioPath string) (string, error) {
 	// Set working directory to the binary's location so it can find DLLs
 	cmd.Dir = filepath.Dir(binaryPath)
 
-	// Hide the console window
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		HideWindow:    true,
-		CreationFlags: 0x08000000, // CREATE_NO_WINDOW
-	}
+	// Hide the console window on Windows
+	hideWindowContext(cmd)
 
 	output, err := cmd.CombinedOutput()
 	outputStr := string(output)

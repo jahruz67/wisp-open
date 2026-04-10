@@ -1,6 +1,6 @@
 # wis-free-v3
 
-A high-performance, native Windows voice dictation application built in Go using the Wails framework. **wis-free-v3** provides instant speech-to-text with AI-powered refinement, operating as a background service with global hotkey support.
+A high-performance, cross-platform (Windows & Linux) voice dictation application built in Go using the Wails framework. **wis-free-v3** provides instant speech-to-text with AI-powered refinement, operating as a background service with global hotkey support.
 
 ---
 
@@ -8,6 +8,7 @@ A high-performance, native Windows voice dictation application built in Go using
 
 - **Blazing Fast**: Native implementation ensures zero lag during recording and transcription.
 - **Global Accessibility**: Trigger from anywhere via configurable global hotkeys.
+- **Cross-Platform**: Supports Windows natively and Linux (X11 strongly recommended; Wayland users may need to map desktop shortcut triggers).
 - **AI-Powered Refinement**: Integrates Groq (Whisper + Llama) for intelligent punctuation and grammar fixing.
 - **Offline Capability**: Supports local Whisper.cpp for sensitive or offline workflows.
 - **Micro-Automation**: Automatically pastes transcribed text directly into your active window.

@@ -8,7 +8,7 @@ import (
 
 	"wis-free-v3/internal/config"
 	"wis-free-v3/internal/logger"
-	"wis-free-v3/internal/system/startup"
+	"wis-free-v3/internal/platform"
 
 	"github.com/getlantern/systray"
 )
@@ -50,9 +50,9 @@ func onReady(app App) {
 
 	menuSettings := systray.AddMenuItem("Settings", "Open settings window")
 	menuStartup := systray.AddMenuItemCheckbox(
-		"Start with Windows",
-		"Automatically start when Windows boots",
-		startup.IsInStartup(),
+		"Start with system",
+		"Automatically start when computer boots",
+		platform.IsInStartup(),
 	)
 
 	systray.AddSeparator()
@@ -82,18 +82,18 @@ func handleMenuEvents(app App, settings, startupItem, exit *systray.MenuItem) {
 // toggleStartup handles the startup toggle menu item.
 func toggleStartup(item *systray.MenuItem) {
 	if item.Checked() {
-		if err := startup.RemoveFromStartup(); err != nil {
+		if err := platform.RemoveFromStartup(); err != nil {
 			logger.Error("Failed to remove from startup: %v", err)
 		} else {
 			item.Uncheck()
-			logger.Info("Removed from Windows startup")
+			logger.Info("Removed from system startup")
 		}
 	} else {
-		if err := startup.AddToStartup(); err != nil {
+		if err := platform.AddToStartup(); err != nil {
 			logger.Error("Failed to add to startup: %v", err)
 		} else {
 			item.Check()
-			logger.Info("Added to Windows startup")
+			logger.Info("Added to system startup")
 		}
 	}
 }

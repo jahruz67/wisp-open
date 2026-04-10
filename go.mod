@@ -1,6 +1,6 @@
 module wis-free-v3
 
-go 1.24
+go 1.24.0
 
 require (
 	github.com/gen2brain/malgo v0.11.24

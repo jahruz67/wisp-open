@@ -7,9 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"syscall"
 
 	"wis-free-v3/internal/logger"
+	"wis-free-v3/internal/platform"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -87,7 +87,7 @@ func acquireInstanceLock() bool {
 	// Check for existing lock file
 	if data, err := os.ReadFile(lockPath); err == nil {
 		if pid, err := strconv.Atoi(string(data)); err == nil {
-			if isProcessRunning(pid) {
+			if platform.IsProcessRunning(pid) {
 				logger.Info("Another instance is already running (PID: %d)", pid)
 				return false
 			}
@@ -136,16 +136,5 @@ func getLockPath() (string, error) {
 	return filepath.Join(homeDir, configDir, lockFile), nil
 }
 
-// isProcessRunning checks if a process with the given PID exists on Windows.
-func isProcessRunning(pid int) bool {
-	const PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-
-	handle, err := syscall.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
-	if err != nil {
-		return false
-	}
-	syscall.CloseHandle(handle)
-	return true
-}
 
 

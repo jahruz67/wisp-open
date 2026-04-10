@@ -1,6 +1,5 @@
-// Package startup manages Windows startup registry entries for the application.
-// It allows the application to automatically start when the user logs in.
-package startup
+//go:build windows
+package windows
 
 import (
 	"fmt"

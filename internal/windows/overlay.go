@@ -1,4 +1,5 @@
-package overlay
+//go:build windows
+package windows
 
 import (
 	"math"
@@ -255,8 +256,17 @@ func (o *Overlay) run() {
 				procTranslateMessage.Call(uintptr(unsafe.Pointer(&msg)))
 				procDispatchMessage.Call(uintptr(unsafe.Pointer(&msg)))
 			} else {
-				// Higher resolution sleep for better responsiveness while keeping CPU low
-				time.Sleep(2 * time.Millisecond)
+				o.mu.RLock()
+				isShowing := o.isShowing
+				o.mu.RUnlock()
+
+				if isShowing {
+					// Higher resolution sleep for smooth animation when visible
+					time.Sleep(2 * time.Millisecond)
+				} else {
+					// Greatly reduce wakeups to save CPU when hidden (app is idle 99% of the time)
+					time.Sleep(50 * time.Millisecond)
+				}
 			}
 		}
 	}

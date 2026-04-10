@@ -1,4 +1,5 @@
-package media
+//go:build windows
+package windows
 
 import (
 	_ "embed"
@@ -10,8 +11,8 @@ import (
 )
 
 var (
-	user32      = syscall.NewLazyDLL("user32.dll")
-	keybd_event = user32.NewProc("keybd_event")
+	user32Media = syscall.NewLazyDLL("user32.dll")
+	keybd_event = user32Media.NewProc("keybd_event")
 )
 
 //go:embed check-media.ps1
