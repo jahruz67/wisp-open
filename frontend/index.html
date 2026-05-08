@@ -13,7 +13,7 @@
         <!-- Header -->
         <div class="flex-between" style="margin-bottom: 30px;">
             <h1 style="margin: 0;">wis-free-v3 Settings</h1>
-            <div style="color: var(--text-muted); font-size: 12px;">v1.0.0</div>
+            <div id="appVersion" style="color: var(--text-muted); font-size: 12px;">—</div>
         </div>
 
         <div id="saveStatus" class="save-status">Settings Saved!</div>
@@ -198,6 +198,14 @@
             const btn = document.getElementById('recordBtn');
             const input = document.getElementById('shortcutInput');
 
+            // WebView2 on Windows often omits metaKey on key events; e.code still identifies Meta.
+            const winKeyActive = (e) =>
+                e.metaKey ||
+                e.key === 'Meta' ||
+                e.key === 'OS' ||
+                e.code === 'MetaLeft' ||
+                e.code === 'MetaRight';
+
             btn.textContent = 'Recording...';
             btn.disabled = true;
             input.value = '';
@@ -212,13 +220,14 @@
                 if (e.ctrlKey) mods.push('ctrl');
                 if (e.altKey) mods.push('alt');
                 if (e.shiftKey) mods.push('shift');
-                if (e.metaKey || e.key === 'Meta' || e.key === 'OS') mods.push('win');
+                if (winKeyActive(e)) mods.push('win');
 
                 let key = e.key.toLowerCase();
                 if (key === 'control') key = 'ctrl';
                 if (key === 'alt') key = 'alt';
                 if (key === 'shift') key = 'shift';
                 if (key === 'meta' || key === 'os') key = 'win';
+                if (e.code === 'MetaLeft' || e.code === 'MetaRight') key = 'win';
                 if (key === ' ') key = 'space';
 
                 const parts = new Set(mods);
@@ -247,7 +256,7 @@
                     if (isModifierOnly && lastShortcut.includes('+')) {
                         // Wait a tiny bit to see if they press another key, but usually release means they are done
                         setTimeout(finish, 100);
-                    } else if (!e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) {
+                    } else if (!e.ctrlKey && !e.altKey && !e.shiftKey && !winKeyActive(e)) {
                         finish();
                     }
                 }
@@ -261,7 +270,10 @@
                     return;
                 }
 
-                window.go.main.App.SaveSettings({ shortcut: lastShortcut }).then(() => {
+                window.go.main.App.SaveSettings({ shortcut: lastShortcut }).then((result) => {
+                    if (result && result.indexOf('Invalid shortcut') !== -1) {
+                        alert(result);
+                    }
                     btn.textContent = 'Record';
                     btn.disabled = false;
                     cleanup();
@@ -277,6 +289,41 @@
             window.addEventListener('keyup', keyupHandler, true);
         };
 
+        function renderHistoryList(history) {
+            const container = document.getElementById('historyList');
+            if (!history || history.length === 0) {
+                container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">No history yet.</div>';
+                return;
+            }
+            container.innerHTML = '';
+            [...history].reverse().forEach(item => {
+                const el = document.createElement('div');
+                el.className = 'history-item';
+
+                const time = document.createElement('span');
+                time.className = 'history-time';
+                time.textContent = new Date(item.timestamp).toLocaleString(undefined, {
+                    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                });
+
+                const text = document.createElement('div');
+                text.textContent = item.text;
+
+                el.appendChild(time);
+                el.appendChild(text);
+                container.appendChild(el);
+            });
+        }
+
+        async function refreshHistoryFromBackend() {
+            try {
+                const settings = await window.go.main.App.GetSettings();
+                renderHistoryList(settings.history || []);
+            } catch (err) {
+                console.error('Failed to refresh history:', err);
+            }
+        }
+
         // Load settings on page load
         async function loadSettings() {
             try {
@@ -290,29 +337,10 @@
                 document.getElementById('language').value = settings.language || 'en';
                 document.getElementById('startupToggle').checked = settings.startup || false;
 
-                // History
-                const history = settings.history || [];
-                const container = document.getElementById('historyList');
-                if (history.length > 0) {
-                    container.innerHTML = '';
-                    [...history].reverse().forEach(item => {
-                        const el = document.createElement('div');
-                        el.className = 'history-item';
+                const ver = (settings.app_version && String(settings.app_version).trim()) || 'dev';
+                document.getElementById('appVersion').textContent = ver === 'dev' ? 'dev' : ('v' + ver);
 
-                        const time = document.createElement('span');
-                        time.className = 'history-time';
-                        time.textContent = new Date(item.timestamp).toLocaleString(undefined, {
-                            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-                        });
-
-                        const text = document.createElement('div');
-                        text.textContent = item.text;
-
-                        el.appendChild(time);
-                        el.appendChild(text);
-                        container.appendChild(el);
-                    });
-                }
+                renderHistoryList(settings.history || []);
             } catch (err) {
                 console.error("Failed to load settings:", err);
             }
@@ -383,7 +411,7 @@
         window.clearHistory = async function () {
             if (confirm('Clear all history?')) {
                 await window.go.main.App.ClearHistory();
-                document.getElementById('historyList').innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 20px;">No history yet.</div>';
+                renderHistoryList([]);
             }
         };
 
@@ -514,6 +542,12 @@
             await loadMics();
             await checkConnection();
             await checkWhisperStatus();
+
+            if (window.runtime && typeof window.runtime.EventsOn === 'function') {
+                window.runtime.EventsOn('history:updated', function () {
+                    refreshHistoryFromBackend();
+                });
+            }
             
             // If Linux, ensure Local Whisper option is removed from Whisper Select as a secondary guard
             if (navigator.userAgent.toLowerCase().includes('linux')) {

@@ -15,6 +15,18 @@ echo "   wis-free-v3 - Linux Build Script"
 echo "========================================"
 echo ""
 
+VERSION_FILE="$(dirname "$0")/VERSION"
+APP_VERSION="dev"
+if [ -f "$VERSION_FILE" ]; then
+    APP_VERSION="$(head -n1 "$VERSION_FILE" | tr -d '\r\n')"
+    APP_VERSION="$(echo "$APP_VERSION" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+fi
+if [ -z "$APP_VERSION" ]; then
+    APP_VERSION="dev"
+fi
+echo "[0/3] App version: $APP_VERSION"
+echo ""
+
 # Function to check if a command exists
 command_exists() {
     command -v "$1" >/dev/null 2>&1
@@ -98,7 +110,7 @@ if [ -d "frontend/node_modules/.bin" ]; then
     chmod +x frontend/node_modules/.bin/* 2>/dev/null || true
 fi
 
-wails build -platform linux/amd64 -clean
+wails build -platform linux/amd64 -clean -ldflags "-X main.AppVersion=${APP_VERSION}"
 
 if [ ! -f "$EXECUTABLE" ]; then
     echo "[ERROR] Build failed. Binary not found at $EXECUTABLE."

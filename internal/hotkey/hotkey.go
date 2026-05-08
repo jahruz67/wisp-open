@@ -2,10 +2,12 @@
 package hotkey
 
 import (
+	"runtime"
 	"sync"
 	"time"
+
 	"wis-free-v3/internal/logger"
-	"wis-free-v3/internal/xhotkey"
+	xhk "wis-free-v3/internal/xhotkey"
 )
 
 // Listener handles global hotkey events and triggers callbacks when the
@@ -15,7 +17,8 @@ type Listener struct {
 	stopCallback  func()
 	isListening   bool
 	shortcut      string
-	hk            *hotkey.Hotkey
+	hk            *xhk.Hotkey
+	stopModPoll   chan struct{}
 	mu            sync.RWMutex
 }
 
@@ -37,12 +40,7 @@ func (l *Listener) UpdateShortcut(shortcut string) {
 	l.mu.Lock()
 	l.shortcut = shortcut
 	wasListening := l.isListening
-
-	if l.hk != nil {
-		l.hk.Unregister()
-		l.hk = nil
-		l.isListening = false
-	}
+	l.stopListeningLocked()
 	l.mu.Unlock()
 
 	logger.Info("Hotkey updated: shortcut=%s", shortcut)
@@ -55,26 +53,43 @@ func (l *Listener) UpdateShortcut(shortcut string) {
 // Start begins listening for the configured shortcut in a background goroutine.
 func (l *Listener) Start() {
 	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	if l.hk != nil {
+	if l.isListening {
+		l.mu.Unlock()
 		return
 	}
 
-	key, mods, ok := ParseShortcut(l.shortcut)
+	key, mods, modOnly, ok := ParseShortcut(l.shortcut)
 	if !ok {
 		logger.Error("Failed to parse shortcut: %s", l.shortcut)
+		l.mu.Unlock()
 		return
 	}
 
-	l.hk = hotkey.New(mods, key)
+	if modOnly {
+		if runtime.GOOS != "windows" {
+			logger.Error("Modifier-only shortcuts like %q are only supported on Windows", l.shortcut)
+			l.mu.Unlock()
+			return
+		}
+		ch := make(chan struct{})
+		l.stopModPoll = ch
+		l.isListening = true
+		l.mu.Unlock()
+		logger.Info("Hotkey listener started (modifier poll), waiting for %s", l.shortcut)
+		go l.modifierPollLoop(mods, ch)
+		return
+	}
+
+	l.hk = xhk.New(mods, key)
 	if err := l.hk.Register(); err != nil {
 		logger.Error("Failed to register hotkey %s: %v", l.shortcut, err)
 		l.hk = nil
+		l.mu.Unlock()
 		return
 	}
 
 	l.isListening = true
+	l.mu.Unlock()
 	logger.Info("Hotkey listener started, waiting for %s", l.shortcut)
 
 	go l.eventLoop(l.hk)
@@ -85,22 +100,26 @@ func (l *Listener) Stop() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	if l.hk == nil {
-		return
-	}
-
-	err := l.hk.Unregister()
-	if err != nil {
-		logger.Error("Failed to unregister hotkey: %v", err)
-	}
-
-	l.hk = nil
-	l.isListening = false
+	l.stopListeningLocked()
 	logger.Info("Hotkey listener stopped")
 }
 
+func (l *Listener) stopListeningLocked() {
+	if l.stopModPoll != nil {
+		close(l.stopModPoll)
+		l.stopModPoll = nil
+	}
+	if l.hk != nil {
+		if err := l.hk.Unregister(); err != nil {
+			logger.Error("Failed to unregister hotkey: %v", err)
+		}
+		l.hk = nil
+	}
+	l.isListening = false
+}
+
 // eventLoop runs the main keyboard event processing loop.
-func (l *Listener) eventLoop(hk *hotkey.Hotkey) {
+func (l *Listener) eventLoop(hk *xhk.Hotkey) {
 	var isRecording bool
 
 	for {

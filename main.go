@@ -35,6 +35,10 @@ var assets embed.FS
 // Global lock file handle for single instance management
 var instanceLock *os.File
 
+// AppVersion is set at link time by scripts/build.bat and scripts/build-linux.sh
+// from scripts/VERSION. Default is used for plain `go build` / `wails build`.
+var AppVersion = "dev"
+
 func main() {
 	// Ensure only one instance of the application is running
 	if !acquireInstanceLock() {

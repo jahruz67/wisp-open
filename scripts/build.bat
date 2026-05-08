@@ -10,6 +10,15 @@ echo    wis-free-v3 - Build Script
 echo ========================================
 echo.
 
+REM App version from scripts\VERSION (single line, e.g. 1.2.3)
+set "APP_VERSION=dev"
+if exist "%~dp0VERSION" (
+    for /f "delims=" %%V in ('powershell -NoProfile -Command "(Get-Content -LiteralPath '%~dp0VERSION' -Raw).Trim()" 2^>nul') do set "APP_VERSION=%%V"
+)
+if "!APP_VERSION!"=="" set "APP_VERSION=dev"
+echo [0/2] App version: !APP_VERSION!
+echo.
+
 REM Check if wails is installed
 where wails >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
@@ -72,7 +81,7 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
-wails build -clean -ldflags="-linkmode internal" -skipbindings
+wails build -clean -ldflags "-linkmode internal -X main.AppVersion=!APP_VERSION!" -skipbindings
 
 if %ERRORLEVEL% NEQ 0 (
     echo.

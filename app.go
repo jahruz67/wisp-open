@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
-
 
 	"wis-free-v3/internal/audio/recorder"
 	"wis-free-v3/internal/config"
@@ -19,7 +19,7 @@ import (
 	"wis-free-v3/internal/ui/tray"
 
 	"github.com/go-vgo/robotgo"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App struct
@@ -46,16 +46,30 @@ func (a *App) GetConfig() *config.Config {
 	return a.config
 }
 
+// Version returns the application version (see scripts/VERSION and build scripts).
+func (a *App) Version() string {
+	return AppVersion
+}
+
 // ShowSettings shows the settings window
 func (a *App) ShowSettings() {
 	if a.ctx != nil {
-		runtime.WindowShow(a.ctx)
+		wailsruntime.WindowShow(a.ctx)
 	}
 }
 
 // startup is called when the app starts
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+
+	title := appTitle
+	switch AppVersion {
+	case "", "dev":
+		title = appTitle + " (dev)"
+	default:
+		title = appTitle + " v" + AppVersion
+	}
+	wailsruntime.WindowSetTitle(ctx, title)
 
 	// Initialize components
 	a.startupHeadless()
@@ -69,7 +83,7 @@ func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 	if a.isQuitting {
 		return false
 	}
-	runtime.WindowHide(ctx)
+	wailsruntime.WindowHide(ctx)
 	return true
 }
 
@@ -78,7 +92,7 @@ func (a *App) Quit() {
 	a.isQuitting = true
 	logger.Info("Application quitting...")
 	logger.Close()
-	runtime.Quit(a.ctx)
+	wailsruntime.Quit(a.ctx)
 }
 
 // StartRecording starts the audio recording
@@ -235,10 +249,14 @@ func (a *App) processRecording() {
 	if len(a.config.History) > 50 {
 		a.config.History = a.config.History[:50]
 	}
-	config.Save(a.config, "")
+	if err := config.Save(a.config, ""); err != nil {
+		logger.Error("Failed to save config after history update: %v", err)
+	} else if a.ctx != nil {
+		wailsruntime.EventsEmit(a.ctx, "history:updated")
+	}
 
 	// Copy to clipboard
-	runtime.ClipboardSetText(a.ctx, refinedText)
+	wailsruntime.ClipboardSetText(a.ctx, refinedText)
 
 	// Paste
 	a.pasteText()
@@ -276,6 +294,7 @@ func (a *App) GetSettings() map[string]interface{} {
 	conf["microphone_device"] = a.config.MicrophoneDevice
 	conf["history"] = a.config.History
 	conf["startup"] = platform.IsInStartup()
+	conf["app_version"] = AppVersion
 	return conf
 }
 
@@ -285,11 +304,13 @@ func (a *App) SaveSettings(settings map[string]interface{}) string {
 		a.config.APIKey = val
 	}
 	if val, ok := settings["shortcut"].(string); ok {
-		// Validate shortcut before applying
-		_, _, ok := hotkey.ParseShortcut(val)
+		_, _, modOnly, ok := hotkey.ParseShortcut(val)
 		if !ok {
 			logger.Error("Invalid shortcut: %s (rejected)", val)
-			return "Invalid shortcut - must have at least one modifier and a regular key"
+			return "Invalid shortcut - use modifiers plus a key (e.g. ctrl+k), or modifier-only on Windows (e.g. ctrl+win)"
+		}
+		if modOnly && runtime.GOOS != "windows" {
+			return "Modifier-only shortcuts (like ctrl+win) are only supported on Windows"
 		}
 
 		a.config.Shortcut = val

@@ -28,7 +28,11 @@ type App interface {
 	Quit()
 	GetConfig() *config.Config
 	ShowSettings()
+	Version() string
 }
+
+// trayLabel is the short product name shown in the tray (includes version when set at link time).
+var trayLabel = "wis-free-v3"
 
 // Menu item references for dynamic updates
 var statusMenuItem *systray.MenuItem
@@ -42,11 +46,21 @@ func Start(app App) {
 	)
 }
 
+func appDisplayName(app App) string {
+	v := app.Version()
+	if v != "" && v != "dev" {
+		return "wis-free-v3 v" + v
+	}
+	return "wis-free-v3"
+}
+
 // onReady is called when the system tray is ready to be configured.
 func onReady(app App) {
+	trayLabel = appDisplayName(app)
+
 	// Configure tray icon and tooltip
 	systray.SetIcon(iconData)
-	systray.SetTitle("wis-free-v3")
+	systray.SetTitle(trayLabel)
 	systray.SetTooltip(buildTooltip(app))
 
 	// Build menu structure
@@ -119,14 +133,14 @@ func buildTooltip(app App) string {
 	if cfg := app.GetConfig(); cfg != nil && cfg.Shortcut != "" {
 		shortcut = cfg.Shortcut
 	}
-	return "wis-free-v3 - " + shortcut + " to record"
+	return trayLabel + " - " + shortcut + " to record"
 }
 
 // UpdateStatus updates the status text displayed in the tray menu.
 func UpdateStatus(status string) {
 	if statusMenuItem != nil {
 		statusMenuItem.SetTitle("Status: " + status)
-		systray.SetTooltip("wis-free-v3 - " + status)
+		systray.SetTooltip(trayLabel + " - " + status)
 
 		if strings.Contains(status, "Recording") {
 			systray.SetIcon(iconRecordingData)

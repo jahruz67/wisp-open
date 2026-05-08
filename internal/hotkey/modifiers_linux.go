@@ -2,15 +2,15 @@
 
 package hotkey
 
-import "wis-free-v3/internal/xhotkey"
+import xhk "wis-free-v3/internal/xhotkey"
 
-var ModMap = map[string]hotkey.Modifier{
-	"ctrl":    hotkey.ModCtrl,
-	"control": hotkey.ModCtrl,
-	"shift":   hotkey.ModShift,
-	"alt":     hotkey.Mod1,
-	"win":     hotkey.Mod4,
-	"windows": hotkey.Mod4,
-	"meta":    hotkey.Mod4,
-	"super":   hotkey.Mod4,
+var ModMap = map[string]xhk.Modifier{
+	"ctrl":    xhk.ModCtrl,
+	"control": xhk.ModCtrl,
+	"shift":   xhk.ModShift,
+	"alt":     xhk.Mod1,
+	"win":     xhk.Mod4,
+	"windows": xhk.Mod4,
+	"meta":    xhk.Mod4,
+	"super":   xhk.Mod4,
 }
