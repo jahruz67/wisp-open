@@ -6,6 +6,7 @@ import (
 	"embed"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 
 	"wis-free-v3/internal/logger"
@@ -40,6 +41,11 @@ var instanceLock *os.File
 var AppVersion = "dev"
 
 func main() {
+	// systray's package init calls runtime.LockOSThread() on the program's startup
+	// thread. Undo that so the main goroutine is not permanently bound; the tray
+	// goroutine locks itself in tray.Start instead (see internal/ui/tray/tray.go).
+	runtime.UnlockOSThread()
+
 	// Ensure only one instance of the application is running
 	if !acquireInstanceLock() {
 		os.Exit(0)
