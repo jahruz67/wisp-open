@@ -1,0 +1,389 @@
+//go:build linux
+
+package hotkey
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"log"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/godbus/dbus/v5"
+)
+
+const (
+	portalBusName                    = "org.freedesktop.portal.Desktop"
+	portalObjectPath                 = "/org/freedesktop/portal/desktop"
+	ifaceGlobalShortcuts             = "org.freedesktop.portal.GlobalShortcuts"
+	ifaceRequest                     = "org.freedesktop.portal.Request"
+	ifaceSession                     = "org.freedesktop.portal.Session"
+	wisfreeGlobalShortcutID          = "com.wisfree.push-to-record"
+	envForcePortal                   = "WISFREE_USE_PORTAL_HOTKEY"
+	envForceX11                      = "WISFREE_USE_X11_HOTKEY"
+)
+
+func usePortalBackend() bool {
+	if os.Getenv(envForceX11) == "1" {
+		return false
+	}
+	if os.Getenv(envForcePortal) == "1" {
+		return true
+	}
+	if os.Getenv("WAYLAND_DISPLAY") != "" {
+		return true
+	}
+	return strings.EqualFold(os.Getenv("XDG_SESSION_TYPE"), "wayland")
+}
+
+func randomPortalToken() string {
+	b := make([]byte, 8)
+	if _, err := rand.Read(b); err != nil {
+		return "tok" + fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b)
+}
+
+func triggerForPortalSpec(mods []Modifier, key Key) string {
+	var ctrl, shift, alt, super bool
+	for _, m := range mods {
+		switch m {
+		case ModCtrl:
+			ctrl = true
+		case ModShift:
+			shift = true
+		case Mod1:
+			alt = true
+		case Mod4:
+			super = true
+		}
+	}
+	keyName := portalKeySpecName(key)
+	if keyName == "" {
+		return ""
+	}
+	var parts []string
+	if ctrl {
+		parts = append(parts, "Control")
+	}
+	if alt {
+		parts = append(parts, "Alt")
+	}
+	if shift {
+		parts = append(parts, "Shift")
+	}
+	if super {
+		parts = append(parts, "Super")
+	}
+	if len(parts) == 0 {
+		return keyName
+	}
+	return strings.Join(parts, "+") + "+" + keyName
+}
+
+func portalKeySpecName(key Key) string {
+	if key >= KeyA && key <= KeyZ {
+		return string(rune(key))
+	}
+	if key >= Key0 && key <= Key9 {
+		return string(rune(key))
+	}
+	switch key {
+	case KeySpace:
+		return "Space"
+	case KeyReturn:
+		return "Return"
+	case KeyEscape:
+		return "Escape"
+	case KeyDelete:
+		return "Delete"
+	case KeyTab:
+		return "Tab"
+	case KeyLeft:
+		return "Left"
+	case KeyRight:
+		return "Right"
+	case KeyUp:
+		return "Up"
+	case KeyDown:
+		return "Down"
+	case KeyF1:
+		return "F1"
+	case KeyF2:
+		return "F2"
+	case KeyF3:
+		return "F3"
+	case KeyF4:
+		return "F4"
+	case KeyF5:
+		return "F5"
+	case KeyF6:
+		return "F6"
+	case KeyF7:
+		return "F7"
+	case KeyF8:
+		return "F8"
+	case KeyF9:
+		return "F9"
+	case KeyF10:
+		return "F10"
+	case KeyF11:
+		return "F11"
+	case KeyF12:
+		return "F12"
+	default:
+		return ""
+	}
+}
+
+func portalWaitRequest(conn *dbus.Conn, reqPath dbus.ObjectPath) (uint32, map[string]dbus.Variant, error) {
+	ch := make(chan *dbus.Signal, 8)
+	conn.Signal(ch)
+	rule := fmt.Sprintf(
+		"type='signal',path='%s',interface='%s',member='Response'",
+		string(reqPath), ifaceRequest,
+	)
+	if err := conn.BusObject().Call("org.freedesktop.DBus.AddMatch", 0, rule).Store(); err != nil {
+		return 0, nil, err
+	}
+	defer func() {
+		_ = conn.BusObject().Call("org.freedesktop.DBus.RemoveMatch", 0, rule).Store()
+	}()
+
+	timeout := time.NewTimer(45 * time.Second)
+	defer timeout.Stop()
+
+	for {
+		select {
+		case sig := <-ch:
+			if sig == nil || sig.Path != reqPath {
+				continue
+			}
+			if sig.Name != "Response" {
+				continue
+			}
+			if len(sig.Body) < 2 {
+				continue
+			}
+			code, ok := sig.Body[0].(uint32)
+			if !ok {
+				continue
+			}
+			results, _ := sig.Body[1].(map[string]dbus.Variant)
+			return code, results, nil
+		case <-timeout.C:
+			return 0, nil, fmt.Errorf("portal request timed out")
+		}
+	}
+}
+
+func variantToObjectPath(v dbus.Variant) (dbus.ObjectPath, bool) {
+	switch x := v.Value().(type) {
+	case dbus.ObjectPath:
+		return x, true
+	case string:
+		return dbus.ObjectPath(x), true
+	default:
+		return "", false
+	}
+}
+
+// registerPortal binds a global shortcut via org.freedesktop.portal.GlobalShortcuts (Wayland / desktop-agnostic).
+func (hk *Hotkey) registerPortal() error {
+	trigger := triggerForPortalSpec(hk.mods, hk.key)
+	if trigger == "" {
+		return fmt.Errorf("unsupported key for portal global shortcuts")
+	}
+
+	conn, err := dbus.SessionBus()
+	if err != nil {
+		return fmt.Errorf("dbus session: %w", err)
+	}
+
+	portal := conn.Object(portalBusName, portalObjectPath)
+
+	createOpts := map[string]dbus.Variant{
+		"handle_token":         dbus.MakeVariant(randomPortalToken()),
+		"session_handle_token": dbus.MakeVariant(randomPortalToken()),
+	}
+
+	var createReqPath dbus.ObjectPath
+	if err := portal.Call(ifaceGlobalShortcuts+".CreateSession", 0, createOpts).Store(&createReqPath); err != nil {
+		_ = conn.Close()
+		return fmt.Errorf("CreateSession: %w", err)
+	}
+
+	code, results, err := portalWaitRequest(conn, createReqPath)
+	if err != nil {
+		_ = conn.Close()
+		return fmt.Errorf("CreateSession wait: %w", err)
+	}
+	if code != 0 {
+		_ = conn.Close()
+		return fmt.Errorf("CreateSession rejected (code %d)", code)
+	}
+	v, ok := results["session_handle"]
+	if !ok {
+		_ = conn.Close()
+		return errors.New("CreateSession: missing session_handle")
+	}
+	sessPath, okp := variantToObjectPath(v)
+	if !okp || sessPath == "" {
+		_ = conn.Close()
+		return errors.New("CreateSession: invalid session_handle")
+	}
+
+	shortcutTuple := []interface{}{
+		wisfreeGlobalShortcutID,
+		map[string]dbus.Variant{
+			"description":       dbus.MakeVariant("Hold to dictate; release to transcribe (WIS Free)"),
+			"preferred_trigger": dbus.MakeVariant(trigger),
+		},
+	}
+	shortcutsArg := []interface{}{shortcutTuple}
+
+	bindOpts := map[string]dbus.Variant{
+		"handle_token": dbus.MakeVariant(randomPortalToken()),
+	}
+
+	var bindReqPath dbus.ObjectPath
+	if err := portal.Call(ifaceGlobalShortcuts+".BindShortcuts", 0, sessPath, shortcutsArg, "", bindOpts).Store(&bindReqPath); err != nil {
+		_ = conn.Object(portalBusName, sessPath).Call(ifaceSession+".Close", 0).Store()
+		_ = conn.Close()
+		return fmt.Errorf("BindShortcuts: %w", err)
+	}
+
+	code, results, err = portalWaitRequest(conn, bindReqPath)
+	if err != nil {
+		_ = conn.Object(portalBusName, sessPath).Call(ifaceSession+".Close", 0).Store()
+		_ = conn.Close()
+		return err
+	}
+	if code != 0 {
+		_ = conn.Object(portalBusName, sessPath).Call(ifaceSession+".Close", 0).Store()
+		_ = conn.Close()
+		return fmt.Errorf("BindShortcuts rejected (code %d); install a desktop with GlobalShortcuts portal support (e.g. recent KDE Plasma) or set %s=1 to force X11 hotkeys under XWayland", code, envForceX11)
+	}
+	if sc, ok := results["shortcuts"]; ok {
+		if ar, ok := sc.Value().([][]interface{}); ok && len(ar) == 0 {
+			log.Printf("wis-free-v3 hotkey: BindShortcuts returned empty shortcut list (desktop may have declined the binding)")
+		}
+	}
+
+	hk.mu.Lock()
+	if hk.registered {
+		hk.mu.Unlock()
+		_ = conn.Object(portalBusName, sessPath).Call(ifaceSession+".Close", 0).Store()
+		_ = conn.Close()
+		return errors.New("hotkey already registered.")
+	}
+	hk.backend = linuxHKPortal
+	hk.registered = true
+	hk.portalConn = conn
+	hk.sessionPath = sessPath
+	hk.portalStop = make(chan struct{})
+	hk.portalDone = make(chan struct{})
+	hk.mu.Unlock()
+
+	go hk.portalSignalLoop()
+	return nil
+}
+
+func (hk *Hotkey) portalSignalLoop() {
+	defer close(hk.portalDone)
+
+	hk.mu.Lock()
+	conn := hk.portalConn
+	sess := hk.sessionPath
+	hk.mu.Unlock()
+	if conn == nil {
+		return
+	}
+
+	ch := make(chan *dbus.Signal, 32)
+	conn.Signal(ch)
+	rule := fmt.Sprintf(
+		"type='signal',interface='%s',path='%s'",
+		ifaceGlobalShortcuts, string(portalObjectPath),
+	)
+	if err := conn.BusObject().Call("org.freedesktop.DBus.AddMatch", 0, rule).Store(); err != nil {
+		log.Printf("wis-free-v3 hotkey: AddMatch GlobalShortcuts: %v", err)
+		return
+	}
+	defer func() { _ = conn.BusObject().Call("org.freedesktop.DBus.RemoveMatch", 0, rule).Store() }()
+
+	for {
+		select {
+		case <-hk.portalStop:
+			return
+		case sig, ok := <-ch:
+			if !ok || sig == nil {
+				return
+			}
+			if sig.Path != portalObjectPath {
+				continue
+			}
+			if len(sig.Body) < 2 {
+				continue
+			}
+			sessVar, ok := sig.Body[0].(dbus.ObjectPath)
+			if !ok {
+				if s, ok := sig.Body[0].(string); ok {
+					sessVar = dbus.ObjectPath(s)
+				} else {
+					continue
+				}
+			}
+			if sessVar != sess {
+				continue
+			}
+			id, ok := sig.Body[1].(string)
+			if !ok || id != wisfreeGlobalShortcutID {
+				continue
+			}
+			name := sig.Name
+			switch {
+			case name == "Activated" || strings.HasSuffix(name, ".Activated"):
+				select {
+				case hk.keydownIn <- Event{}:
+				default:
+				}
+			case name == "Deactivated" || strings.HasSuffix(name, ".Deactivated"):
+				select {
+				case hk.keyupIn <- Event{}:
+				default:
+				}
+			}
+		}
+	}
+}
+
+// cleanupPortal stops the portal listener and closes the session (unlock before call).
+func (hk *Hotkey) cleanupPortal() error {
+	hk.mu.Lock()
+	stopCh := hk.portalStop
+	doneCh := hk.portalDone
+	conn := hk.portalConn
+	sess := hk.sessionPath
+	hk.portalStop = nil
+	hk.portalDone = nil
+	hk.portalConn = nil
+	hk.sessionPath = ""
+	hk.backend = linuxHKNone
+	hk.mu.Unlock()
+
+	if stopCh != nil {
+		close(stopCh)
+	}
+	if doneCh != nil {
+		<-doneCh
+	}
+	if conn != nil && sess != "" {
+		_ = conn.Object(portalBusName, sess).Call(ifaceSession+".Close", 0).Store()
+		_ = conn.Close()
+	}
+	return nil
+}

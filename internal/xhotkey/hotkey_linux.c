@@ -17,6 +17,31 @@ extern void hotkeyDown(uintptr_t hkhandle);
 extern void hotkeyUp(uintptr_t hkhandle);
 extern int checkCancel(uintptr_t hkhandle);
 
+// Effective modifier masks for XGrabKey when NumLock / CapsLock are on.
+// See: https://stackoverflow.com/questions/4037230/how-to-handle-global-hotkeys-with-x11-xlib
+static unsigned int mod_masks[4];
+
+static void init_mod_masks(unsigned int mod) {
+	mod_masks[0] = mod;
+	mod_masks[1] = mod | Mod2Mask;
+	mod_masks[2] = mod | LockMask;
+	mod_masks[3] = mod | Mod2Mask | LockMask;
+}
+
+static void grab_all(Display* d, int keycode, unsigned int mod, Window w) {
+	init_mod_masks(mod);
+	for (int i = 0; i < 4; i++) {
+		XGrabKey(d, keycode, mod_masks[i], w, False, GrabModeAsync, GrabModeAsync);
+	}
+}
+
+static void ungrab_all(Display* d, int keycode, unsigned int mod, Window w) {
+	init_mod_masks(mod);
+	for (int i = 0; i < 4; i++) {
+		XUngrabKey(d, keycode, mod_masks[i], w);
+	}
+}
+
 int displayTest() {
 	Display* d = NULL;
 	for (int i = 0; i < 42; i++) {
@@ -27,6 +52,7 @@ int displayTest() {
 	if (d == NULL) {
 		return -1;
 	}
+	XCloseDisplay(d);
 	return 0;
 }
 
@@ -47,8 +73,14 @@ int waitHotkey(uintptr_t hkhandle, unsigned int mod, int key) {
 	XkbSetDetectableAutoRepeat(d, True, &supported);
 
 	int keycode = XKeysymToKeycode(d, key);
-	XGrabKey(d, keycode, mod, DefaultRootWindow(d), False, GrabModeAsync, GrabModeAsync);
-	XSelectInput(d, DefaultRootWindow(d), KeyPressMask | KeyReleaseMask);
+	if (keycode == 0) {
+		XCloseDisplay(d);
+		return -1;
+	}
+
+	Window root = DefaultRootWindow(d);
+	grab_all(d, keycode, mod, root);
+	XSelectInput(d, root, KeyPressMask | KeyReleaseMask);
 	XEvent ev;
 	
 	while(1) {
@@ -59,10 +91,14 @@ int waitHotkey(uintptr_t hkhandle, unsigned int mod, int key) {
 			XNextEvent(d, &ev);
 			switch(ev.type) {
 			case KeyPress:
-				hotkeyDown(hkhandle);
+				if (ev.xkey.keycode == (unsigned)keycode) {
+					hotkeyDown(hkhandle);
+				}
 				continue;
 			case KeyRelease:
-				hotkeyUp(hkhandle);
+				if (ev.xkey.keycode == (unsigned)keycode) {
+					hotkeyUp(hkhandle);
+				}
 				continue;
 			}
 		} else {
@@ -70,7 +106,7 @@ int waitHotkey(uintptr_t hkhandle, unsigned int mod, int key) {
 		}
 	}
 	
-	XUngrabKey(d, keycode, mod, DefaultRootWindow(d));
+	ungrab_all(d, keycode, mod, root);
 	XCloseDisplay(d);
 	return 0;
 }

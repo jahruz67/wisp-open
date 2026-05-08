@@ -79,13 +79,24 @@ fi
 if [ $MISSING_DEPS -eq 1 ]; then
     echo ""
     echo "It looks like you are missing some required libraries."
+    echo ""
+    echo "Wayland note: global hotkeys use the XDG GlobalShortcuts portal when WAYLAND_DISPLAY"
+    echo "or XDG_SESSION_TYPE=wayland is set (xdg-desktop-portal + a supporting compositor, e.g. KDE Plasma)."
+    echo "Override: WISFREE_USE_X11_HOTKEY=1 forces X11 grabs (needs XWayland);"
+    echo "WISFREE_USE_PORTAL_HOTKEY=1 forces the portal on X11 sessions for testing."
+    echo ""
     
     DEBIAN_DEPS="build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.0-dev libx11-dev libx11-xcb-dev libxtst-dev libasound2-dev libayatana-appindicator3-dev libxkbcommon-x11-dev"
+    # Runtime niceties (optional): libnotify-bin — status toasts; playerctl — pause media while recording
+    DEBIAN_RUNTIME_OPT="libnotify-bin playerctl"
     ARCH_DEPS="base-devel pkgconf gtk3 webkit2gtk libx11 libxtst alsa-lib libayatana-appindicator libxkbcommon-x11"
+    ARCH_RUNTIME_OPT="libnotify playerctl"
     
     echo "The full list of dependencies needed:"
     echo "  [Ubuntu/Debian]: sudo apt update && sudo apt install -y $DEBIAN_DEPS"
+    echo "  [Ubuntu/Debian] optional: sudo apt install -y $DEBIAN_RUNTIME_OPT"
     echo "  [Arch Linux]:    sudo pacman -S $ARCH_DEPS"
+    echo "  [Arch Linux] optional: sudo pacman -S $ARCH_RUNTIME_OPT"
     echo ""
     
     if command_exists apt-get; then

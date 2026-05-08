@@ -4,7 +4,7 @@
 //
 // Written by Changkun Ou <changkun.de>
 
-//go:build (linux || darwin) && !cgo
+//go:build darwin && !cgo
 
 package hotkey_test
 
@@ -14,9 +14,7 @@ import (
 	"wis-free-v3/internal/xhotkey"
 )
 
-// TestHotkey should always run success.
-// This is a test to run and for manually testing, registered combination:
-// Ctrl+Alt+A (Ctrl+Mod2+Mod4+A on Linux)
+// Without CGO on Darwin, registration is unsupported (panic). Linux without CGO uses the portal backend instead.
 func TestHotkey(t *testing.T) {
 	defer func() {
 		if r := recover(); r != nil {

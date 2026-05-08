@@ -7,17 +7,18 @@ import (
 	"path/filepath"
 )
 
-const (
-	appName = "wis-free-v3"
-	desktopFileContent = `[Desktop Entry]
+const appName = "wis-free-v3"
+
+// desktopFileTemplate is filled with execLine built from the absolute binary path.
+// Paths with spaces must be quoted per the Desktop Entry spec.
+const desktopFileTemplate = `[Desktop Entry]
 Type=Application
 Name=WIS Free V3
-Exec="%s"
+%s
 Terminal=false
 Categories=Utility;
 X-GNOME-Autostart-enabled=true
 `
-)
 
 func getAutostartPath() (string, error) {
 	home, err := os.UserHomeDir()
@@ -46,6 +47,28 @@ func getExecutablePath() (string, error) {
 	return filepath.Abs(exe)
 }
 
+// desktopExecField returns one line: Exec=/path or Exec="/path with spaces"
+func desktopExecField(exePath string) string {
+	needsQuote := false
+	for _, r := range exePath {
+		if r == ' ' || r == '\t' || r == '"' || r == '\'' || r == '\\' {
+			needsQuote = true
+			break
+		}
+	}
+	if !needsQuote {
+		return "Exec=" + exePath
+	}
+	escaped := ""
+	for _, r := range exePath {
+		if r == '"' || r == '`' || r == '$' || r == '\\' {
+			escaped += `\`
+		}
+		escaped += string(r)
+	}
+	return `Exec="` + escaped + `"`
+}
+
 func AddToStartup() error {
 	autostartPath, err := getAutostartPath()
 	if err != nil {
@@ -57,7 +80,7 @@ func AddToStartup() error {
 		return fmt.Errorf("failed to get executable path: %w", err)
 	}
 
-	content := fmt.Sprintf(desktopFileContent, exePath)
+	content := fmt.Sprintf(desktopFileTemplate, desktopExecField(exePath))
 	if err := os.WriteFile(autostartPath, []byte(content), 0644); err != nil {
 		return fmt.Errorf("failed to write autostart file: %w", err)
 	}

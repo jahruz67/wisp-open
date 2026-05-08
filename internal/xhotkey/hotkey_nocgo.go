@@ -4,7 +4,7 @@
 //
 // Written by Changkun Ou <changkun.de>
 
-//go:build !windows && !cgo
+//go:build !windows && !cgo && !linux
 
 package hotkey
 

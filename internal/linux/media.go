@@ -3,6 +3,8 @@ package linux
 
 import (
 	"os/exec"
+	"strings"
+
 	"wis-free-v3/internal/logger"
 )
 
@@ -13,7 +15,7 @@ func IsPlaying() bool {
 	if err != nil {
 		return false
 	}
-	return string(out) == "Playing\n"
+	return strings.EqualFold(strings.TrimSpace(string(out)), "playing")
 }
 
 // TogglePlayPause sends the play-pause command via playerctl
