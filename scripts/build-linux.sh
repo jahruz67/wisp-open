@@ -57,8 +57,15 @@ for dep in "${DEPS[@]}"; do
 done
 
 # We can't easily check C headers, but we can try to find them with pkg-config
+# (Fedora often ships webkit2gtk-4.1.pc; Debian/Ubuntu often use webkit2gtk-4.0.pc)
+webkit2_ok() {
+    pkg-config --exists webkit2gtk-4.0 2>/dev/null && return 0
+    pkg-config --exists webkit2gtk-4.1 2>/dev/null && return 0
+    return 1
+}
+
 if command_exists pkg-config; then
-    if ! pkg-config --exists gtk+-3.0 webkit2gtk-4.0; then
+    if ! pkg-config --exists gtk+-3.0 || ! webkit2_ok; then
         echo "[WARNING] Missing Wails dependencies (GTK3 / WebKit2GTK)."
         MISSING_DEPS=1
     fi
@@ -89,12 +96,19 @@ if [ $MISSING_DEPS -eq 1 ]; then
     DEBIAN_DEPS="build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.0-dev libx11-dev libx11-xcb-dev libxtst-dev libasound2-dev libayatana-appindicator3-dev libxkbcommon-x11-dev"
     # Runtime niceties (optional): libnotify-bin — status toasts; playerctl — pause media while recording
     DEBIAN_RUNTIME_OPT="libnotify-bin playerctl"
+    # Fedora: webkit2gtk4.1-devel is typical on current releases; use 4.0 package if dnf only offers that
+    FEDORA_DEPS="gcc gcc-c++ make pkgconf-pkg-config gtk3-devel webkit2gtk4.1-devel libX11-devel libxcb-devel libXtst-devel alsa-lib-devel libayatana-appindicator-gtk3-devel libxkbcommon-x11-devel"
+    FEDORA_DEPS_ALT="gcc gcc-c++ make pkgconf-pkg-config gtk3-devel webkit2gtk4.0-devel libX11-devel libxcb-devel libXtst-devel alsa-lib-devel libayatana-appindicator-gtk3-devel libxkbcommon-x11-devel"
+    FEDORA_RUNTIME_OPT="libnotify playerctl xdg-desktop-portal"
     ARCH_DEPS="base-devel pkgconf gtk3 webkit2gtk libx11 libxtst alsa-lib libayatana-appindicator libxkbcommon-x11"
     ARCH_RUNTIME_OPT="libnotify playerctl"
     
     echo "The full list of dependencies needed:"
     echo "  [Ubuntu/Debian]: sudo apt update && sudo apt install -y $DEBIAN_DEPS"
     echo "  [Ubuntu/Debian] optional: sudo apt install -y $DEBIAN_RUNTIME_OPT"
+    echo "  [Fedora]:        sudo dnf install -y $FEDORA_DEPS"
+    echo "                   (if webkit2gtk4.1-devel is unavailable, try: sudo dnf install -y $FEDORA_DEPS_ALT)"
+    echo "  [Fedora] optional: sudo dnf install -y $FEDORA_RUNTIME_OPT"
     echo "  [Arch Linux]:    sudo pacman -S $ARCH_DEPS"
     echo "  [Arch Linux] optional: sudo pacman -S $ARCH_RUNTIME_OPT"
     echo ""
@@ -104,6 +118,18 @@ if [ $MISSING_DEPS -eq 1 ]; then
         if [[ "$INSTALL_DEPS" == "y" || "$INSTALL_DEPS" == "Y" ]]; then
             echo "Installing dependencies..."
             sudo apt update && sudo apt install -y $DEBIAN_DEPS
+        else
+            echo "Skipping installation."
+            read -p "Press Enter to attempt build anyway, or Ctrl+C to cancel..."
+        fi
+    elif command_exists dnf; then
+        read -p "Would you like to automatically install missing dependencies with dnf now? (Requires sudo) (y/N): " INSTALL_DEPS
+        if [[ "$INSTALL_DEPS" == "y" || "$INSTALL_DEPS" == "Y" ]]; then
+            echo "Installing dependencies (Fedora)..."
+            if ! sudo dnf install -y $FEDORA_DEPS; then
+                echo "[INFO] Retrying with webkit2gtk4.0-devel instead of 4.1..."
+                sudo dnf install -y $FEDORA_DEPS_ALT
+            fi
         else
             echo "Skipping installation."
             read -p "Press Enter to attempt build anyway, or Ctrl+C to cancel..."
