@@ -64,7 +64,9 @@ func main() {
 		OnStartup:        app.startup,
 		OnShutdown:       app.Shutdown,
 		OnBeforeClose:    app.beforeClose,
-		StartHidden:      true,
+		// On Linux, starting hidden makes it look like "nothing happens" if the tray icon
+		// fails to initialize (missing libayatana-appindicator, etc) or is hidden by the DE.
+		StartHidden: runtime.GOOS == "windows",
 		Bind:             []interface{}{app},
 	})
 
