@@ -2,6 +2,7 @@
 package tray
 
 /*
+#cgo pkg-config: glib-2.0
 #include <glib.h>
 */
 import "C"
