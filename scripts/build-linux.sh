@@ -6,6 +6,15 @@ set -e
 # Change to the root directory of the project
 cd "$(dirname "$0")/.."
 
+# Temporary pkg-config shim (Fedora 40+: only webkit2gtk-4.1.pc exists; some tooling still asks for 4.0)
+WAILS_PKGCFG_SHIM=""
+cleanup_pkgconfig_shim() {
+    if [ -n "$WAILS_PKGCFG_SHIM" ] && [ -d "$WAILS_PKGCFG_SHIM" ]; then
+        rm -rf "$WAILS_PKGCFG_SHIM"
+    fi
+}
+trap cleanup_pkgconfig_shim EXIT
+
 APP_NAME="wis-free-v3"
 BUILD_DIR="build/bin"
 EXECUTABLE="$BUILD_DIR/$APP_NAME"
@@ -64,6 +73,13 @@ webkit2_ok() {
     return 1
 }
 
+# Tray: Debian uses ayatana-appindicator3; Fedora package names differ but .pc is often the same
+appindicator_ok() {
+    pkg-config --exists ayatana-appindicator3-0.1 2>/dev/null && return 0
+    pkg-config --exists appindicator3-0.1 2>/dev/null && return 0
+    return 1
+}
+
 if command_exists pkg-config; then
     if ! pkg-config --exists gtk+-3.0 || ! webkit2_ok; then
         echo "[WARNING] Missing Wails dependencies (GTK3 / WebKit2GTK)."
@@ -77,8 +93,8 @@ if command_exists pkg-config; then
         echo "[WARNING] Missing audio dependencies (ALSA)."
         MISSING_DEPS=1
     fi
-    if ! pkg-config --exists ayatana-appindicator3-0.1; then
-        echo "[WARNING] Missing systray dependencies (ayatana-appindicator3)."
+    if ! appindicator_ok; then
+        echo "[WARNING] Missing systray dependencies (appindicator / ayatana)."
         MISSING_DEPS=1
     fi
 fi
@@ -96,9 +112,11 @@ if [ $MISSING_DEPS -eq 1 ]; then
     DEBIAN_DEPS="build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.0-dev libx11-dev libx11-xcb-dev libxtst-dev libasound2-dev libayatana-appindicator3-dev libxkbcommon-x11-dev"
     # Runtime niceties (optional): libnotify-bin — status toasts; playerctl — pause media while recording
     DEBIAN_RUNTIME_OPT="libnotify-bin playerctl"
-    # Fedora: webkit2gtk4.1-devel is typical on current releases; use 4.0 package if dnf only offers that
+    # Fedora 40+: WebKit2GTK 4.0 packages are gone; use 4.1 + Wails -tags webkit2_41 (see wails build below).
+    # pkgconf-pkg-config provides `pkg-config` on Fedora.
     FEDORA_DEPS="gcc gcc-c++ make pkgconf-pkg-config gtk3-devel webkit2gtk4.1-devel libX11-devel libxcb-devel libXtst-devel alsa-lib-devel libayatana-appindicator-gtk3-devel libxkbcommon-x11-devel"
-    FEDORA_DEPS_ALT="gcc gcc-c++ make pkgconf-pkg-config gtk3-devel webkit2gtk4.0-devel libX11-devel libxcb-devel libXtst-devel alsa-lib-devel libayatana-appindicator-gtk3-devel libxkbcommon-x11-devel"
+    # Same as FEDORA_DEPS but classic libappindicator (some spins/repos lack Ayatana -devel)
+    FEDORA_DEPS_ALT="gcc gcc-c++ make pkgconf-pkg-config gtk3-devel webkit2gtk4.1-devel libX11-devel libxcb-devel libXtst-devel alsa-lib-devel libappindicator-gtk3-devel libxkbcommon-x11-devel"
     FEDORA_RUNTIME_OPT="libnotify playerctl xdg-desktop-portal"
     ARCH_DEPS="base-devel pkgconf gtk3 webkit2gtk libx11 libxtst alsa-lib libayatana-appindicator libxkbcommon-x11"
     ARCH_RUNTIME_OPT="libnotify playerctl"
@@ -107,7 +125,7 @@ if [ $MISSING_DEPS -eq 1 ]; then
     echo "  [Ubuntu/Debian]: sudo apt update && sudo apt install -y $DEBIAN_DEPS"
     echo "  [Ubuntu/Debian] optional: sudo apt install -y $DEBIAN_RUNTIME_OPT"
     echo "  [Fedora]:        sudo dnf install -y $FEDORA_DEPS"
-    echo "                   (if webkit2gtk4.1-devel is unavailable, try: sudo dnf install -y $FEDORA_DEPS_ALT)"
+    echo "                   (if Ayatana devel is missing, use libappindicator-gtk3-devel — see FEDORA_DEPS_ALT in this script)"
     echo "  [Fedora] optional: sudo dnf install -y $FEDORA_RUNTIME_OPT"
     echo "  [Arch Linux]:    sudo pacman -S $ARCH_DEPS"
     echo "  [Arch Linux] optional: sudo pacman -S $ARCH_RUNTIME_OPT"
@@ -127,7 +145,7 @@ if [ $MISSING_DEPS -eq 1 ]; then
         if [[ "$INSTALL_DEPS" == "y" || "$INSTALL_DEPS" == "Y" ]]; then
             echo "Installing dependencies (Fedora)..."
             if ! sudo dnf install -y $FEDORA_DEPS; then
-                echo "[INFO] Retrying with webkit2gtk4.0-devel instead of 4.1..."
+                echo "[INFO] Retrying dnf with libappindicator-gtk3-devel instead of Ayatana..."
                 sudo dnf install -y $FEDORA_DEPS_ALT
             fi
         else
@@ -147,7 +165,35 @@ if [ -d "frontend/node_modules/.bin" ]; then
     chmod +x frontend/node_modules/.bin/* 2>/dev/null || true
 fi
 
-wails build -platform linux/amd64 -clean -ldflags "-X main.AppVersion=${APP_VERSION}"
+# Fedora 40+ / rolling: only webkit2gtk-4.1 is shipped. Wails v2 uses -tags webkit2_41 for that API.
+# Also symlink webkit2gtk-4.0.pc -> 4.1.pc so CGO / other deps that still probe "webkit2gtk-4.0" resolve.
+WAILS_WEBKIT_TAGS=()
+if pkg-config --exists webkit2gtk-4.1 2>/dev/null; then
+    WAILS_WEBKIT_TAGS=(-tags webkit2_41)
+fi
+
+if ! pkg-config --exists webkit2gtk-4.0 2>/dev/null && pkg-config --exists webkit2gtk-4.1 2>/dev/null; then
+    WEBKIT41_PC=""
+    for dir in \
+        $(printf '%s' "${PKG_CONFIG_PATH:-}" | tr ':' '\n') \
+        /usr/lib64/pkgconfig \
+        /usr/lib/pkgconfig \
+        /usr/local/lib64/pkgconfig \
+        /usr/local/lib/pkgconfig; do
+        [ -z "$dir" ] && continue
+        [ -f "$dir/webkit2gtk-4.1.pc" ] || continue
+        WEBKIT41_PC="$dir/webkit2gtk-4.1.pc"
+        break
+    done
+    if [ -n "$WEBKIT41_PC" ]; then
+        WAILS_PKGCFG_SHIM=$(mktemp -d "${TMPDIR:-/tmp}/wails-pkgcfg-shim.XXXXXX")
+        ln -sf "$WEBKIT41_PC" "$WAILS_PKGCFG_SHIM/webkit2gtk-4.0.pc"
+        export PKG_CONFIG_PATH="$WAILS_PKGCFG_SHIM${PKG_CONFIG_PATH:+:}${PKG_CONFIG_PATH:-}"
+        echo "[INFO] Using PKG_CONFIG_PATH shim: webkit2gtk-4.0.pc -> $(basename "$WEBKIT41_PC")"
+    fi
+fi
+
+wails build -platform linux/amd64 -clean "${WAILS_WEBKIT_TAGS[@]}" -ldflags "-X main.AppVersion=${APP_VERSION}"
 
 if [ ! -f "$EXECUTABLE" ]; then
     echo "[ERROR] Build failed. Binary not found at $EXECUTABLE."
