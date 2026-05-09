@@ -5,6 +5,7 @@ package tray
 import (
 	"bytes"
 	_ "embed"
+	"encoding/binary"
 	"fmt"
 	"image/png"
 	"os"
@@ -12,7 +13,6 @@ import (
 	"strings"
 	"sync"
 
-	"golang.org/x/image/ico"
 	"wis-free-v3/internal/config"
 	"wis-free-v3/internal/logger"
 	"wis-free-v3/internal/platform"
@@ -180,16 +180,39 @@ func getDefaultIcon() []byte {
 }
 
 func icoToPNG(data []byte) ([]byte, error) {
-	img, err := ico.Decode(bytes.NewReader(data))
-	if err != nil {
-		return nil, err
+	// Try to find a PNG image embedded inside the ICO file and return it.
+	// ICO files contain entries that may be BMP/DIB or PNG encoded images.
+	if len(data) < 6 {
+		return nil, fmt.Errorf("invalid ico data")
 	}
-
-	var buf bytes.Buffer
-	if err := png.Encode(&buf, img); err != nil {
-		return nil, err
+	count := int(binary.LittleEndian.Uint16(data[4:6]))
+	var bestOffset int
+	var bestSize int
+	for i := 0; i < count; i++ {
+		entry := 6 + i*16
+		if entry+16 > len(data) {
+			break
+		}
+		bytesInRes := int(binary.LittleEndian.Uint32(data[entry+8 : entry+12]))
+		imageOffset := int(binary.LittleEndian.Uint32(data[entry+12 : entry+16]))
+		if bytesInRes == 0 || imageOffset+bytesInRes > len(data) {
+			continue
+		}
+		// PNG files start with the 8-byte signature 89 50 4E 47 0D 0A 1A 0A
+		if bytesInRes >= 8 && imageOffset+8 <= len(data) &&
+			bytes.Equal(data[imageOffset:imageOffset+8], []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'}) {
+			if bytesInRes > bestSize {
+				bestSize = bytesInRes
+				bestOffset = imageOffset
+			}
+		}
 	}
-	return buf.Bytes(), nil
+	if bestSize > 0 {
+		out := make([]byte, bestSize)
+		copy(out, data[bestOffset:bestOffset+bestSize])
+		return out, nil
+	}
+	return nil, fmt.Errorf("no PNG image found in ico")
 }
 
 // UpdateStatus updates the status text displayed in the tray menu.
