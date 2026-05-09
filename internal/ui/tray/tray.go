@@ -3,11 +3,16 @@
 package tray
 
 import (
+	"bytes"
 	_ "embed"
+	"fmt"
+	"image/png"
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 
+	"golang.org/x/image/ico"
 	"wis-free-v3/internal/config"
 	"wis-free-v3/internal/logger"
 	"wis-free-v3/internal/platform"
@@ -68,7 +73,7 @@ func onReady(app App) {
 	trayLabel = appDisplayName(app)
 
 	// Configure tray icon and tooltip
-	systray.SetIcon(iconData)
+	systray.SetIcon(getDefaultIcon())
 	systray.SetTitle(trayLabel)
 	systray.SetTooltip(buildTooltip(app))
 
@@ -148,6 +153,45 @@ func buildTooltip(app App) string {
 	return trayLabel + " - " + shortcut + " to record"
 }
 
+var (
+	defaultIconOnce  sync.Once
+	defaultIconBytes []byte
+)
+
+func getDefaultIcon() []byte {
+	if runtime.GOOS != "linux" {
+		return iconData
+	}
+
+	defaultIconOnce.Do(func() {
+		pngData, err := icoToPNG(iconData)
+		if err != nil {
+			logger.Error("Failed to convert tray icon to PNG for Linux: %v", err)
+			defaultIconBytes = iconData
+			return
+		}
+		defaultIconBytes = pngData
+	})
+
+	if len(defaultIconBytes) == 0 {
+		return iconData
+	}
+	return defaultIconBytes
+}
+
+func icoToPNG(data []byte) ([]byte, error) {
+	img, err := ico.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
 // UpdateStatus updates the status text displayed in the tray menu.
 func UpdateStatus(status string) {
 	if statusMenuItem != nil {
@@ -159,7 +203,7 @@ func UpdateStatus(status string) {
 		} else if strings.Contains(status, "Transcribing") {
 			systray.SetIcon(iconTranscribingData)
 		} else {
-			systray.SetIcon(iconData)
+			systray.SetIcon(getDefaultIcon())
 		}
 	}
 }
@@ -176,5 +220,3 @@ func IncrementTriggerCount() {
 func onExit() {
 	logger.Info("System tray terminated")
 }
-
-
