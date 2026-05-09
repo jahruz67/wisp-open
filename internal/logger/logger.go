@@ -134,7 +134,5 @@ func getLogPath() (string, error) {
 		return "", err
 	}
 
-	return filepath.Join(homeDir, ".wis-free-v3", "logs"), nil
+	return filepath.Join(homeDir, ".wis-free-v3", "logs", time.Now().Format("2006-01-02")+".log"), nil
 }
-
-

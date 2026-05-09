@@ -74,6 +74,14 @@ func (a *App) startup(ctx context.Context) {
 	// Initialize components
 	a.startupHeadless()
 
+	// When the user launches the app again while it is already running (tray-only),
+	// the second process signals us here so the settings window becomes visible.
+	go func() {
+		for range secondInstanceWake {
+			wailsruntime.WindowShow(ctx)
+		}
+	}()
+
 	// Start system tray in a goroutine
 	go tray.Start(a)
 }

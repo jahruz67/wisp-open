@@ -48,8 +48,13 @@ func main() {
 
 	// Ensure only one instance of the application is running
 	if !acquireInstanceLock() {
+		// Another copy is already running (often left in the tray). Without this,
+		// we would exit silently and the user sees "nothing happens" when clicking
+		// the launcher again.
+		tryNotifyRunningInstanceToShow()
 		os.Exit(0)
 	}
+	runSecondInstanceListener()
 
 	// Initialize the application
 	app := NewApp()
@@ -64,9 +69,7 @@ func main() {
 		OnStartup:        app.startup,
 		OnShutdown:       app.Shutdown,
 		OnBeforeClose:    app.beforeClose,
-		// On Linux, starting hidden makes it look like "nothing happens" if the tray icon
-		// fails to initialize (missing libayatana-appindicator, etc) or is hidden by the DE.
-		StartHidden: runtime.GOOS == "windows",
+		StartHidden:      true,
 		Bind:             []interface{}{app},
 	})
 
@@ -147,6 +150,3 @@ func getLockPath() (string, error) {
 	}
 	return filepath.Join(homeDir, configDir, lockFile), nil
 }
-
-
-

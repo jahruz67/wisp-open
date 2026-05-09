@@ -150,12 +150,15 @@ if [[ "$INSTALL" == "y" || "$INSTALL" == "Y" ]]; then
         sudo cp "build/appicon.png" "$ICON_PATH"
     fi
     
+    # Absolute Exec path: some desktop environments do not put /usr/local/bin on PATH
+    # for .desktop launches, so "Exec=wis-free-v3" can fail with no visible error.
     cat << EOF > /tmp/$APP_NAME.desktop
 [Desktop Entry]
 Type=Application
 Name=WIS Free V3
 Comment=Voice Dictation App
-Exec=$APP_NAME
+Exec=/usr/local/bin/$APP_NAME
+TryExec=/usr/local/bin/$APP_NAME
 Icon=$APP_NAME
 Terminal=false
 Categories=Utility;Audio;
