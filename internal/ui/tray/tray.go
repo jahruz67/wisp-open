@@ -10,7 +10,6 @@ import (
 	"os"
 	"runtime"
 	"strings"
-	"sync"
 
 	"wis-free-v3/internal/config"
 	"wis-free-v3/internal/logger"
@@ -21,6 +20,9 @@ import (
 
 //go:embed icon.ico
 var iconData []byte
+
+//go:embed icon.png
+var iconPNGData []byte
 
 //go:embed icon_recording.png
 var iconRecordingData []byte
@@ -152,30 +154,16 @@ func buildTooltip(app App) string {
 	return trayLabel + " - " + shortcut + " to record"
 }
 
-var (
-	defaultIconOnce  sync.Once
-	defaultIconBytes []byte
-)
-
 func getDefaultIcon() []byte {
-	if runtime.GOOS != "linux" {
-		return iconData
+	if runtime.GOOS == "linux" {
+		return iconPNGData
 	}
+	return iconData
+}
 
-	defaultIconOnce.Do(func() {
-		pngData, err := icoToPNG(iconData)
-		if err != nil {
-			logger.Error("Failed to convert tray icon to PNG for Linux: %v", err)
-			defaultIconBytes = iconData
-			return
-		}
-		defaultIconBytes = pngData
-	})
-
-	if len(defaultIconBytes) == 0 {
-		return iconData
-	}
-	return defaultIconBytes
+// DefaultIconBytes returns the raw default icon bytes for the current platform.
+func DefaultIconBytes() []byte {
+	return getDefaultIcon()
 }
 
 func icoToPNG(data []byte) ([]byte, error) {

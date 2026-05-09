@@ -31,7 +31,7 @@ func IsProcessRunning(pid int) bool {
 	return windows.IsProcessRunning(pid)
 }
 
-func EnsureDesktopFile() error {
+func EnsureDesktopFile(iconBytes []byte) error {
 	// Not applicable on Windows
 	return nil
 }

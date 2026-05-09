@@ -15,31 +15,52 @@ const baseDesktopFileTemplate = `[Desktop Entry]
 Type=Application
 Name=WIS Free V3
 %s
+Icon=%s
+StartupWMClass=%s
 Terminal=false
 Categories=Utility;
 `
 
-const autostartDesktopFileTemplate = baseDesktopFileTemplate + "X-GNOME-Autostart-enabled=true\n"
+const autostartDesktopFileTemplate = `[Desktop Entry]
+Type=Application
+Name=WIS Free V3
+%s
+Icon=wis-free-v3
+StartupWMClass=wis-free-v3
+Terminal=false
+Categories=Utility;
+X-GNOME-Autostart-enabled=true
+`
 
-func EnsureDesktopFile() error {
+func EnsureDesktopFile(iconBytes []byte) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return err
 	}
-	
+
 	appsDir := filepath.Join(home, ".local", "share", "applications")
 	if err := os.MkdirAll(appsDir, 0755); err != nil {
 		return err
 	}
-	
+
 	desktopPath := filepath.Join(appsDir, appName+".desktop")
-	
+
 	exePath, err := getExecutablePath()
 	if err != nil {
 		return err
 	}
-	
-	content := fmt.Sprintf(baseDesktopFileTemplate, desktopExecField(exePath))
+
+	// Write icon to local pixmaps so the desktop file Icon= field resolves
+	pixmapsDir := filepath.Join(home, ".local", "share", "pixmaps")
+	if err := os.MkdirAll(pixmapsDir, 0755); err != nil {
+		return err
+	}
+	iconPath := filepath.Join(pixmapsDir, appName+".png")
+	if err := os.WriteFile(iconPath, iconBytes, 0644); err != nil {
+		return fmt.Errorf("failed to write icon to pixmaps: %w", err)
+	}
+
+	content := fmt.Sprintf(baseDesktopFileTemplate, desktopExecField(exePath), appName, appName)
 	return os.WriteFile(desktopPath, []byte(content), 0644)
 }
 

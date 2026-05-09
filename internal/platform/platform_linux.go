@@ -31,6 +31,6 @@ func IsProcessRunning(pid int) bool {
 	return linux.IsProcessRunning(pid)
 }
 
-func EnsureDesktopFile() error {
-	return linux.EnsureDesktopFile()
+func EnsureDesktopFile(iconBytes []byte) error {
+	return linux.EnsureDesktopFile(iconBytes)
 }

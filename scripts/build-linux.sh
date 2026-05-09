@@ -56,6 +56,43 @@ fi
 # 2. Check for Linux dependencies
 echo "[1/3] Checking system dependencies..."
 MISSING_DEPS=0
+
+# 2a. GNOME tray icon support check (before build — avoids launching app if this will fail)
+# AppIndicator icons need the GNOME Shell extension on GNOME desktop environments.
+# Other DEs (KDE Plasma, XFCE, Cinnamon, etc.) usually support them natively.
+if [ "$XDG_CURRENT_DESKTOP" = "GNOME" ] || [ "$XDG_CURRENT_DESKTOP" = "ubuntu:GNOME" ]; then
+    if ! gnome-extensions show appindicator@altamirano.fabio &>/dev/null; then
+        echo ""
+        echo "==============================================================="
+        echo "  ERROR: GNOME AppIndicator extension is not installed"
+        echo "==============================================================="
+        echo ""
+        echo "  GNOME does not show system tray icons without this extension."
+        echo "  The app will run but the tray icon will be invisible."
+        echo ""
+        if command_exists dnf; then
+            echo "  Install it with:"
+            echo ""
+            echo "    sudo dnf install gnome-shell-extension-appindicator"
+            echo ""
+        elif command_exists apt-get; then
+            echo "  Install it with:"
+            echo ""
+            echo "    sudo apt install gnome-shell-extension-appindicator"
+            echo ""
+        else
+            echo "  Install the 'gnome-shell-extension-appindicator' package"
+            echo "  for your distribution."
+            echo ""
+        fi
+        echo "  Then log out and back in, and enable it in:"
+        echo "    Settings > Extensions > AppIndicator and KStatusNotifierItem Support"
+        echo ""
+        echo "==============================================================="
+        exit 1
+    fi
+fi
+
 DEPS=("gcc" "pkg-config")
 
 for dep in "${DEPS[@]}"; do
@@ -200,6 +237,10 @@ if [ ! -f "$EXECUTABLE" ]; then
     exit 1
 fi
 
+# wails build sometimes auto-launches the binary on Linux — kill it so it
+# doesn't block the terminal while we ask about installation.
+pkill -f "$EXECUTABLE" 2>/dev/null || true
+
 echo "[3/3] Build successful!"
 echo "      Output: $EXECUTABLE"
 echo ""
@@ -232,6 +273,7 @@ Comment=Voice Dictation App
 Exec=/usr/local/bin/$APP_NAME
 TryExec=/usr/local/bin/$APP_NAME
 Icon=$APP_NAME
+StartupWMClass=$APP_NAME
 Terminal=false
 Categories=Utility;Audio;
 EOF

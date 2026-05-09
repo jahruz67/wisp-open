@@ -476,7 +476,7 @@ func (a *App) startupHeadless() {
 	}
 
 	// Ensure desktop integration for Wayland portals
-	if err := platform.EnsureDesktopFile(); err != nil {
+	if err := platform.EnsureDesktopFile(tray.DefaultIconBytes()); err != nil {
 		logger.Error("Failed to ensure desktop file: %v", err)
 	}
 
