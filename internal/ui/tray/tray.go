@@ -7,7 +7,6 @@ import (
 	_ "embed"
 	"encoding/binary"
 	"fmt"
-	"image/png"
 	"os"
 	"runtime"
 	"strings"
