@@ -154,11 +154,11 @@ func (l *Listener) eventLoop(hk *xhk.Hotkey) {
 				// If Wayland doesn't send Deactivated (Keyup), this acts as a Toggle fallback.
 				select {
 				case <-hk.Keyup():
-					// Out-of-order X11 auto-repeat. Ignore both.
+					// Out-of-order auto-repeat. Ignore both.
 				case <-time.After(20 * time.Millisecond):
 					// Genuine second press. Toggle off.
-					logger.Info("Shortcut activated again: stopping recording (Wayland toggle fallback)")
-					go l.stopCallback()
+					logger.Info("Shortcut activated again: toggling recording (Wayland toggle fallback)")
+					go l.startCallback()
 					isRecording = false
 				}
 			}

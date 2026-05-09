@@ -9,6 +9,7 @@ var ModMap = map[string]xhk.Modifier{
 	"control": xhk.ModCtrl,
 	"shift":   xhk.ModShift,
 	"alt":     xhk.Mod1,
+	"option":  xhk.Mod1,
 	"win":     xhk.Mod4,
 	"windows": xhk.Mod4,
 	"meta":    xhk.Mod4,

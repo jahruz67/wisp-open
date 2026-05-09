@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 
 	"wis-free-v3/internal/logger"
 	"wis-free-v3/internal/platform"
@@ -40,18 +41,32 @@ var instanceLock *os.File
 // from scripts/VERSION. Default is used for plain `go build` / `wails build`.
 var AppVersion = "dev"
 
+var initialAction string
+
 func main() {
 	// systray's package init calls runtime.LockOSThread() on the program's startup
 	// thread. Undo that so the main goroutine is not permanently bound; the tray
 	// goroutine locks itself in tray.Start instead (see internal/ui/tray/tray.go).
 	runtime.UnlockOSThread()
 
+	// If we are being used as a helper command (e.g. GNOME custom shortcut),
+	// signal the running instance and exit.
+	for _, arg := range os.Args[1:] {
+		if strings.HasPrefix(arg, "--action=") {
+			action := strings.TrimPrefix(arg, "--action=")
+			initialAction = action
+			if tryNotifyRunningInstanceAction(action) {
+				os.Exit(0)
+			}
+		}
+	}
+
 	// Ensure only one instance of the application is running
 	if !acquireInstanceLock() {
 		// Another copy is already running (often left in the tray). Without this,
 		// we would exit silently and the user sees "nothing happens" when clicking
 		// the launcher again.
-		tryNotifyRunningInstanceToShow()
+		_ = tryNotifyRunningInstanceToShow()
 		os.Exit(0)
 	}
 	runSecondInstanceListener()

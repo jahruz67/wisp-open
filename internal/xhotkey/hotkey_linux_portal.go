@@ -23,20 +23,13 @@ const (
 	ifaceSession                     = "org.freedesktop.portal.Session"
 	wisfreeGlobalShortcutID          = "com.wisfree.push-to-record"
 	envForcePortal                   = "WISFREE_USE_PORTAL_HOTKEY"
-	envForceX11                      = "WISFREE_USE_X11_HOTKEY"
 )
 
 func usePortalBackend() bool {
-	if os.Getenv(envForceX11) == "1" {
+	if os.Getenv(envForcePortal) == "0" {
 		return false
 	}
-	if os.Getenv(envForcePortal) == "1" {
-		return true
-	}
-	if os.Getenv("WAYLAND_DISPLAY") != "" {
-		return true
-	}
-	return strings.EqualFold(os.Getenv("XDG_SESSION_TYPE"), "wayland")
+	return true
 }
 
 func randomPortalToken() string {
@@ -162,7 +155,7 @@ func portalWaitRequest(conn *dbus.Conn, reqPath dbus.ObjectPath) (uint32, map[st
 			if sig == nil || sig.Path != reqPath {
 				continue
 			}
-			if sig.Name != "Response" {
+			if !strings.HasSuffix(sig.Name, ".Response") {
 				continue
 			}
 			if len(sig.Body) < 2 {
@@ -208,6 +201,9 @@ func (hk *Hotkey) registerPortal() error {
 	createOpts := map[string]dbus.Variant{
 		"handle_token":         dbus.MakeVariant(randomPortalToken()),
 		"session_handle_token": dbus.MakeVariant(randomPortalToken()),
+		// Required by xdg-desktop-portal on some desktops (e.g. Fedora/GNOME).
+		// This should match the app's .desktop file id when possible.
+		"app_id": dbus.MakeVariant("wis-free-v3"),
 	}
 
 	var createReqPath dbus.ObjectPath
@@ -270,7 +266,7 @@ func (hk *Hotkey) registerPortal() error {
 	if code != 0 {
 		_ = conn.Object(portalBusName, sessPath).Call(ifaceSession+".Close", 0).Store()
 		_ = conn.Close()
-		return fmt.Errorf("BindShortcuts rejected (code %d); install a desktop with GlobalShortcuts portal support (e.g. recent KDE Plasma) or set %s=1 to force X11 hotkeys under XWayland", code, envForceX11)
+		return fmt.Errorf("BindShortcuts rejected (code %d); install a desktop with GlobalShortcuts portal support (e.g. recent KDE Plasma or GNOME)", code)
 	}
 	if sc, ok := results["shortcuts"]; ok {
 		val := sc.Value()
@@ -323,8 +319,8 @@ func (hk *Hotkey) portalSignalLoop() {
 	ch := make(chan *dbus.Signal, 32)
 	conn.Signal(ch)
 	rule := fmt.Sprintf(
-		"type='signal',interface='%s',path='%s'",
-		ifaceGlobalShortcuts, string(portalObjectPath),
+		"type='signal',interface='%s'",
+		ifaceGlobalShortcuts,
 	)
 	if err := conn.BusObject().Call("org.freedesktop.DBus.AddMatch", 0, rule).Store(); err != nil {
 		log.Printf("wis-free-v3 hotkey: AddMatch GlobalShortcuts: %v", err)
@@ -339,9 +335,6 @@ func (hk *Hotkey) portalSignalLoop() {
 		case sig, ok := <-ch:
 			if !ok || sig == nil {
 				return
-			}
-			if sig.Path != portalObjectPath {
-				continue
 			}
 			if len(sig.Body) < 2 {
 				continue

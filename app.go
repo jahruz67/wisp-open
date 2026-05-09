@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync/atomic"
 	"strings"
 	"time"
 
@@ -31,6 +32,7 @@ type App struct {
 	config          *config.Config
 	overlay         platform.Overlay
 	recordingPath   string
+	recording       int32
 	isQuitting      bool
 	wasMediaPlaying bool
 	whisperManager  *whisper.Manager
@@ -82,8 +84,47 @@ func (a *App) startup(ctx context.Context) {
 		}
 	}()
 
+	// Accept explicit commands from helper invocations (Linux desktop shortcuts).
+	go func() {
+		for cmd := range secondInstanceCommand {
+			switch cmd {
+			case instanceCmdShow:
+				wailsruntime.WindowShow(ctx)
+			case instanceCmdStart:
+				a.StartRecording()
+			case instanceCmdStop:
+				a.StopRecording()
+			case instanceCmdToggle:
+				a.ToggleRecording()
+			default:
+			}
+		}
+	}()
+
 	// Start system tray in a goroutine
-	go tray.Start(a)
+	if runtime.GOOS == "linux" {
+		tray.Start(a)
+	} else {
+		go tray.Start(a)
+	}
+
+	if initialAction != "" {
+		action := initialAction
+		initialAction = ""
+		go func() {
+			switch action {
+			case "show":
+				wailsruntime.WindowShow(ctx)
+			case "start":
+				a.StartRecording()
+			case "stop":
+				a.StopRecording()
+			case "toggle":
+				a.ToggleRecording()
+			default:
+			}
+		}()
+	}
 }
 
 // beforeClose is called when the window is about to close
@@ -103,8 +144,27 @@ func (a *App) Quit() {
 	wailsruntime.Quit(a.ctx)
 }
 
+var lastToggle time.Time
+
+func (a *App) ToggleRecording() {
+	// Debounce toggle calls to prevent rapid firing from double-binds or Wayland glitches
+	if time.Since(lastToggle) < 500*time.Millisecond {
+		return
+	}
+	lastToggle = time.Now()
+
+	if atomic.LoadInt32(&a.recording) == 1 {
+		a.StopRecording()
+		return
+	}
+	a.StartRecording()
+}
+
 // StartRecording starts the audio recording
 func (a *App) StartRecording() {
+	if !atomic.CompareAndSwapInt32(&a.recording, 0, 1) {
+		return
+	}
 	logger.Info("StartRecording triggered")
 
 	// 1. Show overlay immediately (most visible feedback)
@@ -120,6 +180,7 @@ func (a *App) StartRecording() {
 		if a.overlay != nil {
 			a.overlay.Hide()
 		}
+		atomic.StoreInt32(&a.recording, 0)
 		return
 	}
 
@@ -141,6 +202,7 @@ func (a *App) StartRecording() {
 			if a.overlay != nil {
 				a.overlay.Hide()
 			}
+			atomic.StoreInt32(&a.recording, 0)
 			return
 		}
 	}
@@ -160,6 +222,9 @@ func (a *App) StartRecording() {
 
 // StopRecording stops the audio recording and triggers transcription
 func (a *App) StopRecording() {
+	if !atomic.CompareAndSwapInt32(&a.recording, 1, 0) {
+		return
+	}
 	logger.Info("StopRecording triggered")
 
 	// Resume media if it was playing before
@@ -169,12 +234,15 @@ func (a *App) StopRecording() {
 	}
 
 	if a.audioRecorder == nil {
+		atomic.StoreInt32(&a.recording, 0)
 		return
 	}
 
 	err := a.audioRecorder.Stop()
 	if err != nil {
 		logger.Error("Failed to stop recording: %v", err)
+		// Attempt to keep state consistent: if stop failed, we are likely still recording.
+		atomic.StoreInt32(&a.recording, 1)
 		return
 	}
 
@@ -329,7 +397,7 @@ func (a *App) SaveSettings(settings map[string]interface{}) string {
 			a.hotkeyListener.UpdateShortcut(val)
 		} else {
 			// Should not happen if app started correctly, but just in case
-			a.hotkeyListener = hotkey.NewListener(val, a.StartRecording, a.StopRecording)
+			a.hotkeyListener = hotkey.NewListener(val, a.ToggleRecording, func() {})
 			a.hotkeyListener.Start()
 		}
 	}
@@ -480,8 +548,8 @@ func (a *App) startupHeadless() {
 		logger.Error("Failed to ensure desktop file: %v", err)
 	}
 
-	// Initialize Hotkey Listener
-	a.hotkeyListener = hotkey.NewListener(a.config.Shortcut, a.StartRecording, a.StopRecording)
+	// Initialize Hotkey Listener (toggle mode: keydown toggles, keyup ignored)
+	a.hotkeyListener = hotkey.NewListener(a.config.Shortcut, a.ToggleRecording, func() {})
 	a.hotkeyListener.Start()
 
 	logger.Info("Components initialized successfully!")

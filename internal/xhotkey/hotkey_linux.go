@@ -1,4 +1,4 @@
-//go:build linux && !cgo
+//go:build linux
 
 package hotkey
 
@@ -13,10 +13,6 @@ func (hk *Hotkey) unregister() error {
 	if !hk.registered {
 		hk.mu.Unlock()
 		return errors.New("hotkey is not registered.")
-	}
-	if hk.backend != linuxHKPortal {
-		hk.mu.Unlock()
-		return errors.New("hotkey: invalid backend state")
 	}
 	hk.registered = false
 	hk.mu.Unlock()

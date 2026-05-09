@@ -62,10 +62,18 @@ export function StopRecording() {
   return window['go']['main']['App']['StopRecording']();
 }
 
+export function ToggleRecording() {
+  return window['go']['main']['App']['ToggleRecording']();
+}
+
 export function ToggleStartup(arg1) {
   return window['go']['main']['App']['ToggleStartup'](arg1);
 }
 
 export function UninstallWhisper() {
   return window['go']['main']['App']['UninstallWhisper']();
+}
+
+export function Version() {
+  return window['go']['main']['App']['Version']();
 }

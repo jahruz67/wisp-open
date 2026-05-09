@@ -14,19 +14,24 @@ const appName = "wis-free-v3"
 const baseDesktopFileTemplate = `[Desktop Entry]
 Type=Application
 Name=WIS Free V3
+Comment=Voice Recording and Transcription
+%s
 %s
 Icon=%s
 StartupWMClass=%s
 Terminal=false
 Categories=Utility;
+Keywords=voice;recorder;transcription;
 `
 
 const autostartDesktopFileTemplate = `[Desktop Entry]
 Type=Application
 Name=WIS Free V3
+Comment=Voice Recording and Transcription
 %s
-Icon=wis-free-v3
-StartupWMClass=wis-free-v3
+%s
+Icon=%s
+StartupWMClass=%s
 Terminal=false
 Categories=Utility;
 X-GNOME-Autostart-enabled=true
@@ -60,7 +65,7 @@ func EnsureDesktopFile(iconBytes []byte) error {
 		return fmt.Errorf("failed to write icon to pixmaps: %w", err)
 	}
 
-	content := fmt.Sprintf(baseDesktopFileTemplate, desktopExecField(exePath), appName, appName)
+	content := fmt.Sprintf(baseDesktopFileTemplate, desktopExecField(exePath), desktopTryExecField(exePath), iconPath, appName)
 	return os.WriteFile(desktopPath, []byte(content), 0644)
 }
 
@@ -113,6 +118,11 @@ func desktopExecField(exePath string) string {
 	return `Exec="` + escaped + `"`
 }
 
+// desktopTryExecField returns one line: TryExec=/path (desktop entries do not accept quoting for TryExec)
+func desktopTryExecField(exePath string) string {
+	return "TryExec=" + exePath
+}
+
 func AddToStartup() error {
 	autostartPath, err := getAutostartPath()
 	if err != nil {
@@ -124,7 +134,17 @@ func AddToStartup() error {
 		return fmt.Errorf("failed to get executable path: %w", err)
 	}
 
-	content := fmt.Sprintf(autostartDesktopFileTemplate, desktopExecField(exePath))
+	// Prefer a concrete icon file path if we already created one in EnsureDesktopFile.
+	// Fall back to the icon name (theme lookup) if it doesn't exist.
+	iconValue := appName
+	if home, err := os.UserHomeDir(); err == nil {
+		iconPath := filepath.Join(home, ".local", "share", "pixmaps", appName+".png")
+		if _, statErr := os.Stat(iconPath); statErr == nil {
+			iconValue = iconPath
+		}
+	}
+
+	content := fmt.Sprintf(autostartDesktopFileTemplate, desktopExecField(exePath), desktopTryExecField(exePath), iconValue, appName)
 	if err := os.WriteFile(autostartPath, []byte(content), 0644); err != nil {
 		return fmt.Errorf("failed to write autostart file: %w", err)
 	}

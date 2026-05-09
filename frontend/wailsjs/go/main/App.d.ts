@@ -32,6 +32,10 @@ export function StartRecording():Promise<void>;
 
 export function StopRecording():Promise<void>;
 
+export function ToggleRecording():Promise<void>;
+
 export function ToggleStartup(arg1:boolean):Promise<string>;
 
 export function UninstallWhisper():Promise<string>;
+
+export function Version():Promise<string>;
