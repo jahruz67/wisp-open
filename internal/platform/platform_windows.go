@@ -30,3 +30,8 @@ func IsInStartup() bool {
 func IsProcessRunning(pid int) bool {
 	return windows.IsProcessRunning(pid)
 }
+
+func EnsureDesktopFile() error {
+	// Not applicable on Windows
+	return nil
+}

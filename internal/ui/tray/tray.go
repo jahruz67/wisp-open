@@ -37,6 +37,8 @@ var trayLabel = "wis-free-v3"
 
 // Menu item references for dynamic updates
 var statusMenuItem *systray.MenuItem
+var triggerCountItem *systray.MenuItem
+var triggerCount int
 
 // Start initializes and runs the system tray.
 // This function blocks until the tray is terminated.
@@ -73,6 +75,9 @@ func onReady(app App) {
 	// Build menu structure
 	statusMenuItem = systray.AddMenuItem("Status: Ready", "Current application status")
 	statusMenuItem.Disable()
+
+	triggerCountItem = systray.AddMenuItem("Shortcut detected: 0 times", "Troubleshooting counter")
+	triggerCountItem.Disable()
 
 	systray.AddSeparator()
 
@@ -156,6 +161,14 @@ func UpdateStatus(status string) {
 		} else {
 			systray.SetIcon(iconData)
 		}
+	}
+}
+
+// IncrementTriggerCount increments the troubleshooting counter in the tray.
+func IncrementTriggerCount() {
+	triggerCount++
+	if triggerCountItem != nil {
+		triggerCountItem.SetTitle(fmt.Sprintf("Shortcut detected: %d times", triggerCount))
 	}
 }
 

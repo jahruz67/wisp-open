@@ -112,6 +112,8 @@ func (a *App) StartRecording() {
 		a.overlay.Show("Recording...")
 	}
 
+	tray.IncrementTriggerCount()
+
 	// 2. Start recorder as soon as possible
 	if a.audioRecorder == nil {
 		logger.Error("Recorder not initialized")
@@ -471,6 +473,11 @@ func (a *App) startupHeadless() {
 		a.audioRecorder.OnVolume = func(level float64) {
 			a.overlay.SetVolume(level)
 		}
+	}
+
+	// Ensure desktop integration for Wayland portals
+	if err := platform.EnsureDesktopFile(); err != nil {
+		logger.Error("Failed to ensure desktop file: %v", err)
 	}
 
 	// Initialize Hotkey Listener

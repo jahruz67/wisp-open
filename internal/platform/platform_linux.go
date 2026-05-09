@@ -30,3 +30,7 @@ func IsInStartup() bool {
 func IsProcessRunning(pid int) bool {
 	return linux.IsProcessRunning(pid)
 }
+
+func EnsureDesktopFile() error {
+	return linux.EnsureDesktopFile()
+}

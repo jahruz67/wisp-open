@@ -81,18 +81,35 @@ func (l *Listener) Start() {
 	}
 
 	l.hk = xhk.New(mods, key)
-	if err := l.hk.Register(); err != nil {
-		logger.Error("Failed to register hotkey %s: %v", l.shortcut, err)
-		l.hk = nil
-		l.mu.Unlock()
-		return
-	}
-
 	l.isListening = true
+	hkToRegister := l.hk
+	shortcutToRegister := l.shortcut
 	l.mu.Unlock()
-	logger.Info("Hotkey listener started, waiting for %s", l.shortcut)
 
-	go l.eventLoop(l.hk)
+	go func() {
+		if err := hkToRegister.Register(); err != nil {
+			logger.Error("Failed to register hotkey %s: %v", shortcutToRegister, err)
+			l.mu.Lock()
+			if l.hk == hkToRegister {
+				l.hk = nil
+				l.isListening = false
+			}
+			l.mu.Unlock()
+			return
+		}
+
+		l.mu.Lock()
+		if l.hk != hkToRegister {
+			// Was stopped or updated while we were registering
+			l.mu.Unlock()
+			hkToRegister.Unregister()
+			return
+		}
+		l.mu.Unlock()
+
+		logger.Info("Hotkey listener started, waiting for %s", shortcutToRegister)
+		go l.eventLoop(hkToRegister)
+	}()
 }
 
 // Stop terminates the hotkey listener.
