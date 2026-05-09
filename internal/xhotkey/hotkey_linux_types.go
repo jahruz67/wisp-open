@@ -22,16 +22,16 @@ type Key uint16
 // See /usr/include/X11/keysymdef.h
 const (
 	KeySpace Key = 0x0020
-	Key1     Key = 0x0030
-	Key2     Key = 0x0031
-	Key3     Key = 0x0032
-	Key4     Key = 0x0033
-	Key5     Key = 0x0034
-	Key6     Key = 0x0035
-	Key7     Key = 0x0036
-	Key8     Key = 0x0037
-	Key9     Key = 0x0038
-	Key0     Key = 0x0039
+	Key0     Key = 0x0030
+	Key1     Key = 0x0031
+	Key2     Key = 0x0032
+	Key3     Key = 0x0033
+	Key4     Key = 0x0034
+	Key5     Key = 0x0035
+	Key6     Key = 0x0036
+	Key7     Key = 0x0037
+	Key8     Key = 0x0038
+	Key9     Key = 0x0039
 	KeyA     Key = 0x0061
 	KeyB     Key = 0x0062
 	KeyC     Key = 0x0063

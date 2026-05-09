@@ -236,14 +236,19 @@ func (hk *Hotkey) registerPortal() error {
 		return errors.New("CreateSession: invalid session_handle")
 	}
 
-	shortcutTuple := []interface{}{
-		wisfreeGlobalShortcutID,
-		map[string]dbus.Variant{
-			"description":       dbus.MakeVariant("Hold to dictate; release to transcribe (WIS Free)"),
-			"preferred_trigger": dbus.MakeVariant(trigger),
+	type portalShortcut struct {
+		ID      string
+		Details map[string]dbus.Variant
+	}
+	shortcutsArg := []portalShortcut{
+		{
+			ID: wisfreeGlobalShortcutID,
+			Details: map[string]dbus.Variant{
+				"description":       dbus.MakeVariant("Hold to dictate; release to transcribe (WIS Free)"),
+				"preferred_trigger": dbus.MakeVariant(trigger),
+			},
 		},
 	}
-	shortcutsArg := []interface{}{shortcutTuple}
 
 	bindOpts := map[string]dbus.Variant{
 		"handle_token": dbus.MakeVariant(randomPortalToken()),
@@ -268,8 +273,20 @@ func (hk *Hotkey) registerPortal() error {
 		return fmt.Errorf("BindShortcuts rejected (code %d); install a desktop with GlobalShortcuts portal support (e.g. recent KDE Plasma) or set %s=1 to force X11 hotkeys under XWayland", code, envForceX11)
 	}
 	if sc, ok := results["shortcuts"]; ok {
-		if ar, ok := sc.Value().([][]interface{}); ok && len(ar) == 0 {
-			log.Printf("wis-free-v3 hotkey: BindShortcuts returned empty shortcut list (desktop may have declined the binding)")
+		val := sc.Value()
+		isEmpty := false
+		switch v := val.(type) {
+		case []interface{}:
+			isEmpty = len(v) == 0
+		case [][]interface{}:
+			isEmpty = len(v) == 0
+		case []map[string]interface{}:
+			isEmpty = len(v) == 0
+		}
+		if isEmpty {
+			_ = conn.Object(portalBusName, sessPath).Call(ifaceSession+".Close", 0).Store()
+			_ = conn.Close()
+			return fmt.Errorf("BindShortcuts returned empty shortcut list (desktop declined the binding)")
 		}
 	}
 
@@ -347,15 +364,9 @@ func (hk *Hotkey) portalSignalLoop() {
 			name := sig.Name
 			switch {
 			case name == "Activated" || strings.HasSuffix(name, ".Activated"):
-				select {
-				case hk.keydownIn <- Event{}:
-				default:
-				}
+				go func() { hk.keydownIn <- Event{} }()
 			case name == "Deactivated" || strings.HasSuffix(name, ".Deactivated"):
-				select {
-				case hk.keyupIn <- Event{}:
-				default:
-				}
+				go func() { hk.keyupIn <- Event{} }()
 			}
 		}
 	}

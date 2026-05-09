@@ -80,7 +80,6 @@ int waitHotkey(uintptr_t hkhandle, unsigned int mod, int key) {
 
 	Window root = DefaultRootWindow(d);
 	grab_all(d, keycode, mod, root);
-	XSelectInput(d, root, KeyPressMask | KeyReleaseMask);
 	XEvent ev;
 	
 	while(1) {
