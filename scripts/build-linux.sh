@@ -61,7 +61,22 @@ MISSING_DEPS=0
 # AppIndicator icons need the GNOME Shell extension on GNOME desktop environments.
 # Other DEs (KDE Plasma, XFCE, Cinnamon, etc.) usually support them natively.
 if [ "$XDG_CURRENT_DESKTOP" = "GNOME" ] || [ "$XDG_CURRENT_DESKTOP" = "ubuntu:GNOME" ]; then
-    if ! gnome-extensions show appindicator@altamirano.fabio &>/dev/null; then
+    EXT_INSTALLED=false
+    if command_exists dnf; then
+        if dnf list installed gnome-shell-extension-appindicator &>/dev/null; then
+            EXT_INSTALLED=true
+        fi
+    elif command_exists apt-get; then
+        if dpkg -s gnome-shell-extension-appindicator &>/dev/null; then
+            EXT_INSTALLED=true
+        fi
+    elif command_exists pacman; then
+        if pacman -Qi gnome-shell-extension-appindicator &>/dev/null; then
+            EXT_INSTALLED=true
+        fi
+    fi
+
+    if [ "$EXT_INSTALLED" = false ]; then
         echo ""
         echo "==============================================================="
         echo "  ERROR: GNOME AppIndicator extension is not installed"
@@ -90,6 +105,9 @@ if [ "$XDG_CURRENT_DESKTOP" = "GNOME" ] || [ "$XDG_CURRENT_DESKTOP" = "ubuntu:GN
         echo ""
         echo "==============================================================="
         exit 1
+    else
+        echo "[INFO] GNOME AppIndicator extension is installed."
+        echo "       Make sure it's enabled in Settings > Extensions."
     fi
 fi
 
