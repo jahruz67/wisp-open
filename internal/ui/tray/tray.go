@@ -67,8 +67,10 @@ func onReady(app App) {
 	statusMenuItem = systray.AddMenuItem("Status: Ready", "Current application status")
 	statusMenuItem.Disable()
 
-	triggerCountItem = systray.AddMenuItem("Shortcut detected: 0 times", "Troubleshooting counter")
-	triggerCountItem.Disable()
+	if runtime.GOOS != "windows" {
+		triggerCountItem = systray.AddMenuItem("Shortcut detected: 0 times", "Troubleshooting counter")
+		triggerCountItem.Disable()
+	}
 
 	systray.AddSeparator()
 
@@ -187,9 +189,12 @@ func icoToPNG(data []byte) ([]byte, error) {
 	return nil, fmt.Errorf("no PNG image found in ico")
 }
 
+var lastStatus string
+
 // UpdateStatus updates the status text displayed in the tray menu.
 func UpdateStatus(status string) {
-	if statusMenuItem != nil {
+	if statusMenuItem != nil && status != lastStatus {
+		lastStatus = status
 		statusMenuItem.SetTitle("Status: " + status)
 		systray.SetTooltip(trayLabel + " - " + status)
 

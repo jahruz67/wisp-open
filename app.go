@@ -36,6 +36,7 @@ type App struct {
 	isQuitting      bool
 	wasMediaPlaying bool
 	whisperManager  *whisper.Manager
+	tempDir         string
 }
 
 // NewApp creates a new App application struct
@@ -63,6 +64,20 @@ func (a *App) ShowSettings() {
 // startup is called when the app starts
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+
+	// Create and clean private temp directory for recordings (Cleanup in background)
+	a.tempDir = filepath.Join(os.TempDir(), "wis-free-v3-recordings")
+	os.MkdirAll(a.tempDir, 0700)
+
+	go func() {
+		// Clean up any orphaned files from previous sessions
+		if files, err := os.ReadDir(a.tempDir); err == nil {
+			for _, f := range files {
+				os.Remove(filepath.Join(a.tempDir, f.Name()))
+			}
+		}
+		logger.Info("Orphaned temp files cleaned")
+	}()
 
 	title := appTitle
 	switch AppVersion {
@@ -150,7 +165,7 @@ func (a *App) ToggleRecording() {
 	// Debounce toggle calls to prevent rapid firing from double-binds or Wayland glitches
 	now := time.Now().UnixNano()
 	last := atomic.LoadInt64(&lastToggleUnixNano)
-	if last != 0 && time.Duration(now-last) < 500*time.Millisecond {
+	if last != 0 && time.Duration(now-last) < 250*time.Millisecond {
 		return
 	}
 	atomic.StoreInt64(&lastToggleUnixNano, now)
@@ -186,13 +201,21 @@ func (a *App) StartRecording() {
 		return
 	}
 
-	// Prepare path
-	tempDir := os.TempDir()
-	timestamp := time.Now().Format("20060102_150405")
-	a.recordingPath = filepath.Join(tempDir, fmt.Sprintf("wis_recording_%s.wav", timestamp))
+	// Prepare path safely in our private temp directory
+	tempFile, err := os.CreateTemp(a.tempDir, "rec_*.wav")
+	if err != nil {
+		logger.Error("Failed to create temp file: %v", err)
+		if a.overlay != nil {
+			a.overlay.Hide()
+		}
+		atomic.StoreInt32(&a.recording, 0)
+		return
+	}
+	a.recordingPath = tempFile.Name()
+	tempFile.Close() // We just need the path, recorder will open it
 
 	// Start recording
-	err := a.audioRecorder.Start(a.recordingPath)
+	err = a.audioRecorder.Start(a.recordingPath)
 	if err != nil {
 		logger.Error("Failed to start recording: %v", err)
 		// IDIOT-PROOFING: Fallback to default
@@ -248,13 +271,15 @@ func (a *App) StopRecording() {
 		return
 	}
 
+	// Capture the path before it can be overwritten by another immediate start
+	pathToProcess := a.recordingPath
 	// Transcribe in a goroutine to avoid blocking
-	go a.processRecording()
+	go a.processRecording(pathToProcess)
 }
 
 // processRecording handles transcription and pasting
-func (a *App) processRecording() {
-	if a.recordingPath == "" {
+func (a *App) processRecording(recordingPath string) {
+	if recordingPath == "" {
 		logger.Error("No recording path set")
 		tray.UpdateStatus("Ready")
 		if a.overlay != nil {
@@ -263,12 +288,26 @@ func (a *App) processRecording() {
 		return
 	}
 
-	logger.Info("Transcribing audio...")
+	// IDIOT-PROOFING: Ignore extremely short recordings (less than ~100ms or ~3KB)
+	// that are likely accidental clicks or hardware glitches.
+	stat, statErr := os.Stat(recordingPath)
+	if statErr == nil && stat.Size() < 4000 {
+		logger.Info("Discarding tiny recording (%d bytes)", stat.Size())
+		os.Remove(recordingPath)
+		if a.overlay != nil {
+			a.overlay.Hide()
+		}
+		tray.UpdateStatus("Ready")
+		return
+	}
+
+	logger.Info("Transcribing audio (%d bytes)...", stat.Size())
 	tray.UpdateStatus("Transcribing...")
 	if a.overlay != nil {
 		a.overlay.Show("Transcribing...")
 	}
 
+	startTranscribe := time.Now()
 	var text string
 	var err error
 
@@ -290,12 +329,15 @@ func (a *App) processRecording() {
 		}
 
 		if a.whisperManager != nil {
-			text, err = a.whisperManager.Transcribe(a.recordingPath)
+			text, err = a.whisperManager.Transcribe(recordingPath, a.config.Language)
 		}
 	} else {
 		// Use cloud API
-		text, err = a.transcriber.TranscribeAudio(a.recordingPath, a.config.Language)
+		text, err = a.transcriber.TranscribeAudio(recordingPath, a.config.Language)
 	}
+	transcribeDuration := time.Since(startTranscribe)
+	logger.Info("Transcription completed in %v", transcribeDuration)
+
 
 	if err != nil {
 		logger.Error("Transcription failed: %v", err)
@@ -308,41 +350,61 @@ func (a *App) processRecording() {
 
 	logger.Info("Transcribed: %s", text)
 
+	activeWindow := robotgo.GetTitle()
+	logger.Info("Active window for context: %s", activeWindow)
+
 	// Refine text (optional)
-	refinedText, err := a.transcriber.RefineText(text)
+	startRefine := time.Now()
+	refinedText, err := a.transcriber.RefineText(text, activeWindow)
 	if err != nil {
 		logger.Error("Refinement failed: %v", err)
 		// Fallback to original text
 		refinedText = text
 	} else {
-		logger.Info("Refined: %s", refinedText)
+		refineDuration := time.Since(startRefine)
+		logger.Info("AI Refinement completed in %v (Refined: %s)", refineDuration, refinedText)
 	}
 
 	// Save to history
-	historyItem := config.HistoryItem{
-		Text:      refinedText,
-		Timestamp: time.Now().Format(time.RFC3339),
-	}
-	// Prepend to history
-	a.config.History = append([]config.HistoryItem{historyItem}, a.config.History...)
-	// Keep only last 50 items
-	if len(a.config.History) > 50 {
-		a.config.History = a.config.History[:50]
-	}
+	a.config.AddHistoryItem(refinedText, time.Now().Format(time.RFC3339))
+
 	if err := config.Save(a.config, ""); err != nil {
 		logger.Error("Failed to save config after history update: %v", err)
 	} else if a.ctx != nil {
 		wailsruntime.EventsEmit(a.ctx, "history:updated")
 	}
 
-	// Copy to clipboard
-	wailsruntime.ClipboardSetText(a.ctx, refinedText)
+	if len(refinedText) < 50 {
+		// Type short text directly to avoid clipboard interference
+		robotgo.TypeStr(refinedText)
+	} else {
+		// Save old clipboard
+		oldClip, clipErr := wailsruntime.ClipboardGetText(a.ctx)
+		
+		// Copy to clipboard
+		wailsruntime.ClipboardSetText(a.ctx, refinedText)
 
-	// Paste
-	a.pasteText()
+		// Paste
+		a.pasteText()
+
+		// Restore old clipboard after a short delay, but ONLY if the user 
+		// hasn't manually copied something else or another burst hasn't finished.
+		if clipErr == nil && oldClip != "" {
+			go func() {
+				time.Sleep(1000 * time.Millisecond)
+				current, _ := wailsruntime.ClipboardGetText(a.ctx)
+				if current == refinedText {
+					wailsruntime.ClipboardSetText(a.ctx, oldClip)
+					logger.Info("Clipboard history restored")
+				}
+			}()
+		}
+	}
 
 	// Clean up the recording file
-	os.Remove(a.recordingPath)
+	if removeErr := os.Remove(recordingPath); removeErr != nil {
+		logger.Error("Failed to remove temporary recording file: %v", removeErr)
+	}
 	logger.Info("Processing complete!")
 	tray.UpdateStatus("Ready")
 
@@ -399,7 +461,11 @@ func (a *App) SaveSettings(settings map[string]interface{}) string {
 			a.hotkeyListener.UpdateShortcut(val)
 		} else {
 			// Should not happen if app started correctly, but just in case
-			a.hotkeyListener = hotkey.NewListener(val, a.ToggleRecording, func() {})
+			if runtime.GOOS == "windows" {
+				a.hotkeyListener = hotkey.NewListener(val, a.StartRecording, a.StopRecording)
+			} else {
+				a.hotkeyListener = hotkey.NewListener(val, a.ToggleRecording, func() {})
+			}
 			a.hotkeyListener.Start()
 		}
 	}
@@ -550,8 +616,13 @@ func (a *App) startupHeadless() {
 		logger.Error("Failed to ensure desktop file: %v", err)
 	}
 
-	// Initialize Hotkey Listener (toggle mode: keydown toggles, keyup ignored)
-	a.hotkeyListener = hotkey.NewListener(a.config.Shortcut, a.ToggleRecording, func() {})
+	// Initialize Hotkey Listener
+	if runtime.GOOS == "windows" {
+		a.hotkeyListener = hotkey.NewListener(a.config.Shortcut, a.StartRecording, a.StopRecording)
+	} else {
+		// Linux (Wayland fallback) uses toggle mode: keydown toggles, keyup ignored
+		a.hotkeyListener = hotkey.NewListener(a.config.Shortcut, a.ToggleRecording, func() {})
+	}
 	a.hotkeyListener.Start()
 
 	logger.Info("Components initialized successfully!")

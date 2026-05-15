@@ -5,7 +5,6 @@ import (
 	_ "embed"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"syscall"
 	"wis-free-v3/internal/logger"
 )
@@ -41,17 +40,21 @@ func sendKey(key byte) {
 
 // IsPlaying checks if media is currently playing using PowerShell SMTC query
 func IsPlaying() bool {
-	// Write script to temp file only if it doesn't exist
-	tempDir := os.TempDir()
-	scriptPath := filepath.Join(tempDir, "wis_check_media_v2.ps1")
-
-	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
-		err = os.WriteFile(scriptPath, checkMediaScript, 0644)
-		if err != nil {
-			logger.Error("Failed to write media check script: %v", err)
-			return false
-		}
+	// Create a secure temp file for the script to prevent symlink attacks
+	f, err := os.CreateTemp("", "wis_check_media_*.ps1")
+	if err != nil {
+		logger.Error("Failed to create secure media check script: %v", err)
+		return false
 	}
+	scriptPath := f.Name()
+	defer os.Remove(scriptPath) // Clean up immediately after execution
+
+	if _, err := f.Write(checkMediaScript); err != nil {
+		f.Close()
+		logger.Error("Failed to write media check script: %v", err)
+		return false
+	}
+	f.Close()
 
 	cmd := exec.Command("powershell.exe",
 		"-NoProfile",
@@ -67,7 +70,7 @@ func IsPlaying() bool {
 		CreationFlags: 0x08000000 | 0x00000200, // CREATE_NO_WINDOW | DETACHED_PROCESS
 	}
 
-	err := cmd.Run()
+	err = cmd.Run()
 
 	// Exit code 0 = not playing, Exit code 1 = playing
 	if err == nil {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 
 	"math"
 	"unsafe"
@@ -215,7 +216,8 @@ func (r *AudioRecorder) Stop() error {
 	if r.outputFile != nil {
 		// Rewrite header with correct data size
 		r.outputFile.Seek(0, 0)
-		if err := r.writeWAVHeader(r.dataSize); err != nil {
+		finalSize := atomic.LoadUint32(&r.dataSize)
+		if err := r.writeWAVHeader(finalSize); err != nil {
 			logger.Error("Failed to update WAV header: %v", err)
 		}
 		r.outputFile.Close()
@@ -256,7 +258,7 @@ func (r *AudioRecorder) Cleanup() {
 func (r *AudioRecorder) onAudioData(_, inputSamples []byte, _ uint32) {
 	if r.outputFile != nil && len(inputSamples) > 0 {
 		n, _ := r.outputFile.Write(inputSamples)
-		r.dataSize += uint32(n)
+		atomic.AddUint32(&r.dataSize, uint32(n))
 
 		// Calculate volume if callback is set
 		if r.OnVolume != nil {

@@ -33,7 +33,9 @@ func AddToStartup() error {
 	}
 	defer key.Close()
 
-	if err := key.SetStringValue(appName, exePath); err != nil {
+	// Quote the path to handle spaces correctly and prevent execution hijacking
+	quotedPath := fmt.Sprintf("\"%s\"", exePath)
+	if err := key.SetStringValue(appName, quotedPath); err != nil {
 		return fmt.Errorf("failed to set registry value: %w", err)
 	}
 

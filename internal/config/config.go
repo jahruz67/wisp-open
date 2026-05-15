@@ -29,6 +29,7 @@ type HistoryItem struct {
 
 // Config represents the complete application configuration.
 type Config struct {
+	Version          int           `json:"version"`
 	APIKey           string        `json:"api_key"`
 	Shortcut         string        `json:"shortcut"`
 	WhisperModel     string        `json:"whisper_model"`
@@ -38,6 +39,9 @@ type Config struct {
 	MicrophoneDevice *int          `json:"microphone_device"`
 	History          []HistoryItem `json:"history"`
 }
+
+const CurrentConfigVersion = 1
+const MaxHistoryItems = 100
 
 // DefaultConfig returns a new configuration with sensible default values.
 func DefaultConfig() *Config {
@@ -70,10 +74,19 @@ func Load(configPath string) (*Config, error) {
 		return nil, err
 	}
 
-	// Apply defaults for any missing fields
+	// Apply defaults and migrations
+	cfg.migrate()
 	cfg.applyDefaults()
 
 	return &cfg, nil
+}
+
+// migrate handles version-based configuration upgrades
+func (c *Config) migrate() {
+	if c.Version < CurrentConfigVersion {
+		// Migration logic for future versions goes here
+		c.Version = CurrentConfigVersion
+	}
 }
 
 // Save writes the configuration to the specified file path.
@@ -134,12 +147,20 @@ func (c *Config) applyDefaults() {
 	}
 }
 
-// AddHistoryItem adds a new transcription to the history.
+// AddHistoryItem adds a new transcription to the history, enforcing a maximum limit.
 func (c *Config) AddHistoryItem(text, timestamp string) {
-	c.History = append(c.History, HistoryItem{
+	newItem := HistoryItem{
 		Text:      text,
 		Timestamp: timestamp,
-	})
+	}
+	
+	// Prepend to history so the newest items are at the top
+	c.History = append([]HistoryItem{newItem}, c.History...)
+
+	// Bounded history: keep only the most recent items
+	if len(c.History) > MaxHistoryItems {
+		c.History = c.History[:MaxHistoryItems]
+	}
 }
 
 // ClearHistory removes all history items.

@@ -261,7 +261,7 @@ func (m *Manager) Uninstall() error {
 }
 
 // Transcribe runs local whisper transcription
-func (m *Manager) Transcribe(audioPath string) (string, error) {
+func (m *Manager) Transcribe(audioPath string, language string) (string, error) {
 	if !m.IsInstalled() {
 		return "", fmt.Errorf("whisper is not installed")
 	}
@@ -280,11 +280,15 @@ func (m *Manager) Transcribe(audioPath string) (string, error) {
 		modelPath = filepath.Join(m.installDir, modelFilename)
 	}
 
-	logger.Info("Running whisper: %s -m %s -f %s", binaryPath, modelPath, audioPath)
+	if language == "" {
+		language = "auto"
+	}
 
-	// Run whisper with simple arguments: ./main -m model.bin -f audio.wav
+	logger.Info("Running whisper: %s -m %s -l %s -f %s", binaryPath, modelPath, language, audioPath)
+
+	// Run whisper with simple arguments: ./main -m model.bin -l language -f audio.wav
 	// Vulkan build uses GPU by default, no need for -ngl
-	cmd := exec.Command(binaryPath, "-m", modelPath, "-f", audioPath)
+	cmd := exec.Command(binaryPath, "-m", modelPath, "-l", language, "-f", audioPath)
 
 	// Set working directory to the binary's location so it can find DLLs
 	cmd.Dir = filepath.Dir(binaryPath)

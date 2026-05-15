@@ -26,7 +26,7 @@ const (
 const (
 	DefaultWhisperModel = "whisper-large-v3-turbo"
 	DefaultAIModel      = "llama-3.3-70b-versatile"
-	HTTPTimeout         = 60 * time.Second
+	HTTPTimeout         = 300 * time.Second
 	RefinementTemp      = 0.3 // Temperature for text refinement (lower = more deterministic)
 )
 
@@ -118,15 +118,20 @@ func (c *Client) TranscribeAudio(audioFilePath, language string) (string, error)
 
 // RefineText uses an LLM to clean up and correct transcribed text.
 // If the AI model is set to "None" or the API key is missing, returns the original text.
-func (c *Client) RefineText(text string) (string, error) {
+func (c *Client) RefineText(text string, activeContext string) (string, error) {
 	if c.apiKey == "" || c.aiModel == "None" {
 		return text, nil
+	}
+
+	systemPrompt := c.aiPrompt
+	if activeContext != "" {
+		systemPrompt += fmt.Sprintf("\n\nContext: The user is currently typing in a window titled '%s'. Please adapt the formatting appropriately (e.g. casual for chat apps, formal for email, code comments for IDEs). Do not mention the window title, just format appropriately.", activeContext)
 	}
 
 	payload := map[string]interface{}{
 		"model": c.aiModel,
 		"messages": []map[string]string{
-			{"role": "system", "content": c.aiPrompt},
+			{"role": "system", "content": systemPrompt},
 			{"role": "user", "content": text},
 		},
 		"temperature": RefinementTemp,
