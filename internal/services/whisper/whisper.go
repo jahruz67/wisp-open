@@ -74,7 +74,12 @@ func (m *Manager) IsInstalled() bool {
 		return false
 	}
 
-	modelPath := filepath.Join(m.installDir, Models[info.Model].Filename)
+	modelInfo, ok := Models[info.Model]
+	if !ok || modelInfo.Filename == "" {
+		return false
+	}
+
+	modelPath := filepath.Join(m.installDir, modelInfo.Filename)
 	if _, err := os.Stat(modelPath); os.IsNotExist(err) {
 		return false
 	}
@@ -265,9 +270,13 @@ func (m *Manager) Transcribe(audioPath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to get installation info: %w", err)
 	}
+	modelInfo, ok := Models[info.Model]
+	if !ok || modelInfo.Filename == "" {
+		return "", fmt.Errorf("invalid installed model: %q", info.Model)
+	}
 
 	binaryPath := m.getBinaryPath()
-	modelFilename := Models[info.Model].Filename
+	modelFilename := modelInfo.Filename
 
 	// Check for model in Release directory first, then main directory
 	modelPath := filepath.Join(m.installDir, "Release", modelFilename)
@@ -424,7 +433,9 @@ func downloadFile(url, dest string, progress chan<- DownloadProgress) error {
 	for {
 		n, err := resp.Body.Read(buf)
 		if n > 0 {
-			out.Write(buf[:n])
+			if _, writeErr := out.Write(buf[:n]); writeErr != nil {
+				return writeErr
+			}
 			downloaded += int64(n)
 			if progress != nil && total > 0 {
 				progress <- DownloadProgress{
@@ -444,5 +455,3 @@ func downloadFile(url, dest string, progress chan<- DownloadProgress) error {
 
 	return nil
 }
-
-

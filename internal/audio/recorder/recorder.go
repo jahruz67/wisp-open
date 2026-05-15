@@ -289,23 +289,49 @@ func (r *AudioRecorder) writeWAVHeader(dataSize uint32) error {
 	blockAlign := numChannels * (bitsPerSample / 8)
 
 	// RIFF chunk
-	r.outputFile.Write([]byte("RIFF"))
-	binary.Write(r.outputFile, binary.LittleEndian, uint32(36+dataSize))
-	r.outputFile.Write([]byte("WAVE"))
+	if _, err := r.outputFile.Write([]byte("RIFF")); err != nil {
+		return err
+	}
+	if err := binary.Write(r.outputFile, binary.LittleEndian, uint32(36+dataSize)); err != nil {
+		return err
+	}
+	if _, err := r.outputFile.Write([]byte("WAVE")); err != nil {
+		return err
+	}
 
 	// fmt sub-chunk
-	r.outputFile.Write([]byte("fmt "))
-	binary.Write(r.outputFile, binary.LittleEndian, uint32(16)) // Subchunk1Size
-	binary.Write(r.outputFile, binary.LittleEndian, uint16(1))  // AudioFormat (PCM)
-	binary.Write(r.outputFile, binary.LittleEndian, numChannels)
-	binary.Write(r.outputFile, binary.LittleEndian, sampleRate)
-	binary.Write(r.outputFile, binary.LittleEndian, byteRate)
-	binary.Write(r.outputFile, binary.LittleEndian, blockAlign)
-	binary.Write(r.outputFile, binary.LittleEndian, bitsPerSample)
+	if _, err := r.outputFile.Write([]byte("fmt ")); err != nil {
+		return err
+	}
+	if err := binary.Write(r.outputFile, binary.LittleEndian, uint32(16)); err != nil { // Subchunk1Size
+		return err
+	}
+	if err := binary.Write(r.outputFile, binary.LittleEndian, uint16(1)); err != nil { // AudioFormat (PCM)
+		return err
+	}
+	if err := binary.Write(r.outputFile, binary.LittleEndian, numChannels); err != nil {
+		return err
+	}
+	if err := binary.Write(r.outputFile, binary.LittleEndian, sampleRate); err != nil {
+		return err
+	}
+	if err := binary.Write(r.outputFile, binary.LittleEndian, byteRate); err != nil {
+		return err
+	}
+	if err := binary.Write(r.outputFile, binary.LittleEndian, blockAlign); err != nil {
+		return err
+	}
+	if err := binary.Write(r.outputFile, binary.LittleEndian, bitsPerSample); err != nil {
+		return err
+	}
 
 	// data sub-chunk
-	r.outputFile.Write([]byte("data"))
-	binary.Write(r.outputFile, binary.LittleEndian, dataSize)
+	if _, err := r.outputFile.Write([]byte("data")); err != nil {
+		return err
+	}
+	if err := binary.Write(r.outputFile, binary.LittleEndian, dataSize); err != nil {
+		return err
+	}
 
 	return nil
 }
