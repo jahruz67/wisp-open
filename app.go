@@ -144,14 +144,16 @@ func (a *App) Quit() {
 	wailsruntime.Quit(a.ctx)
 }
 
-var lastToggle time.Time
+var lastToggleUnixNano int64
 
 func (a *App) ToggleRecording() {
 	// Debounce toggle calls to prevent rapid firing from double-binds or Wayland glitches
-	if time.Since(lastToggle) < 500*time.Millisecond {
+	now := time.Now().UnixNano()
+	last := atomic.LoadInt64(&lastToggleUnixNano)
+	if last != 0 && time.Duration(now-last) < 500*time.Millisecond {
 		return
 	}
-	lastToggle = time.Now()
+	atomic.StoreInt64(&lastToggleUnixNano, now)
 
 	if atomic.LoadInt32(&a.recording) == 1 {
 		a.StopRecording()

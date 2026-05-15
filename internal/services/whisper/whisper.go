@@ -74,7 +74,12 @@ func (m *Manager) IsInstalled() bool {
 		return false
 	}
 
-	modelPath := filepath.Join(m.installDir, Models[info.Model].Filename)
+	modelInfo, ok := Models[info.Model]
+	if !ok || modelInfo.Filename == "" {
+		return false
+	}
+
+	modelPath := filepath.Join(m.installDir, modelInfo.Filename)
 	if _, err := os.Stat(modelPath); os.IsNotExist(err) {
 		return false
 	}
@@ -444,5 +449,4 @@ func downloadFile(url, dest string, progress chan<- DownloadProgress) error {
 
 	return nil
 }
-
 
