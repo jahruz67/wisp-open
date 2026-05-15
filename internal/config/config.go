@@ -89,7 +89,7 @@ func Save(c *Config, configPath string) error {
 
 	// Ensure the directory exists
 	dir := filepath.Dir(configPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
 
@@ -98,7 +98,7 @@ func Save(c *Config, configPath string) error {
 		return err
 	}
 
-	return os.WriteFile(configPath, data, 0644)
+	return os.WriteFile(configPath, data, 0600)
 }
 
 // GetConfigPath returns the default configuration file path.
