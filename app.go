@@ -149,11 +149,15 @@ var lastToggleUnixNano int64
 func (a *App) ToggleRecording() {
 	// Debounce toggle calls to prevent rapid firing from double-binds or Wayland glitches
 	now := time.Now().UnixNano()
-	last := atomic.LoadInt64(&lastToggleUnixNano)
-	if last != 0 && time.Duration(now-last) < 500*time.Millisecond {
-		return
+	for {
+		last := atomic.LoadInt64(&lastToggleUnixNano)
+		if last != 0 && time.Duration(now-last) < 500*time.Millisecond {
+			return
+		}
+		if atomic.CompareAndSwapInt64(&lastToggleUnixNano, last, now) {
+			break
+		}
 	}
-	atomic.StoreInt64(&lastToggleUnixNano, now)
 
 	if atomic.LoadInt32(&a.recording) == 1 {
 		a.StopRecording()

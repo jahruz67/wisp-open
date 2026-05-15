@@ -254,8 +254,15 @@ func (r *AudioRecorder) Cleanup() {
 
 // onAudioData is called by miniaudio when audio data is available.
 func (r *AudioRecorder) onAudioData(_, inputSamples []byte, _ uint32) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	if r.outputFile != nil && len(inputSamples) > 0 {
-		n, _ := r.outputFile.Write(inputSamples)
+		n, err := r.outputFile.Write(inputSamples)
+		if err != nil {
+			logger.Error("Failed to write audio data: %v", err)
+			return
+		}
 		r.dataSize += uint32(n)
 
 		// Calculate volume if callback is set
