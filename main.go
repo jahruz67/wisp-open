@@ -93,6 +93,7 @@ func main() {
 	}
 
 	// Clean up resources on exit
+	cleanupSecondInstanceListener()
 	releaseInstanceLock()
 }
 

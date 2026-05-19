@@ -112,3 +112,9 @@ func runSecondInstanceListener() {
 		}
 	}()
 }
+
+func cleanupSecondInstanceListener() {
+	if path, err := instanceSocketPath(); err == nil {
+		_ = os.Remove(path)
+	}
+}

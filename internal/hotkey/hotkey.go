@@ -13,13 +13,14 @@ import (
 // Listener handles global hotkey events and triggers callbacks when the
 // configured shortcut is pressed and released.
 type Listener struct {
-	startCallback func()
-	stopCallback  func()
-	isListening   bool
-	shortcut      string
-	hk            *xhk.Hotkey
-	stopModPoll   chan struct{}
-	mu            sync.RWMutex
+	startCallback             func()
+	stopCallback              func()
+	registrationErrorCallback func(error)
+	isListening               bool
+	shortcut                  string
+	hk                        *xhk.Hotkey
+	stopModPoll               chan struct{}
+	mu                        sync.RWMutex
 }
 
 // NewListener creates a new hotkey listener with the specified shortcut and callbacks.
@@ -32,6 +33,13 @@ func NewListener(shortcut string, onStart, onStop func()) *Listener {
 		stopCallback:  onStop,
 		shortcut:      shortcut,
 	}
+}
+
+// SetRegistrationErrorCallback sets a callback to be invoked if hotkey registration fails.
+func (l *Listener) SetRegistrationErrorCallback(cb func(error)) {
+	l.mu.Lock()
+	l.registrationErrorCallback = cb
+	l.mu.Unlock()
 }
 
 // UpdateShortcut changes the shortcut without stopping the listener.
@@ -90,11 +98,15 @@ func (l *Listener) Start() {
 		if err := hkToRegister.Register(); err != nil {
 			logger.Error("Failed to register hotkey %s: %v", shortcutToRegister, err)
 			l.mu.Lock()
+			cb := l.registrationErrorCallback
 			if l.hk == hkToRegister {
 				l.hk = nil
 				l.isListening = false
 			}
 			l.mu.Unlock()
+			if cb != nil {
+				cb(err)
+			}
 			return
 		}
 

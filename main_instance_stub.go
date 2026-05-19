@@ -24,3 +24,4 @@ func tryNotifyRunningInstanceAction(action string) bool {
 }
 
 func runSecondInstanceListener() {}
+func cleanupSecondInstanceListener() {}

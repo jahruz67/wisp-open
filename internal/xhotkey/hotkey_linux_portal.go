@@ -135,6 +135,7 @@ func portalKeySpecName(key Key) string {
 func portalWaitRequest(conn *dbus.Conn, reqPath dbus.ObjectPath) (uint32, map[string]dbus.Variant, error) {
 	ch := make(chan *dbus.Signal, 8)
 	conn.Signal(ch)
+	defer conn.RemoveSignal(ch)
 	rule := fmt.Sprintf(
 		"type='signal',path='%s',interface='%s',member='Response'",
 		string(reqPath), ifaceRequest,
@@ -318,6 +319,7 @@ func (hk *Hotkey) portalSignalLoop() {
 
 	ch := make(chan *dbus.Signal, 32)
 	conn.Signal(ch)
+	defer conn.RemoveSignal(ch)
 	rule := fmt.Sprintf(
 		"type='signal',interface='%s'",
 		ifaceGlobalShortcuts,

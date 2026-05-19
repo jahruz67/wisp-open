@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 
 	"wis-free-v3/internal/logger"
 )
@@ -14,8 +15,9 @@ import (
 // (notify-send). There is no full-screen overlay on Linux to avoid a GTK/Cairo
 // dependency beyond what Wails already pulls in.
 type linuxOverlay struct {
-	mu      sync.Mutex
-	lastMsg string
+	mu         sync.Mutex
+	lastMsg    string
+	lastUpdate time.Time
 }
 
 func NewOverlay() *linuxOverlay {
@@ -75,6 +77,13 @@ func (o *linuxOverlay) SetVolume(level float64) {
 		return
 	}
 	o.mu.Lock()
+	now := time.Now()
+	// Throttle to at most once per 300ms to prevent spawning notify-send processes at ~100Hz (buffer rate)
+	if now.Sub(o.lastUpdate) < 300*time.Millisecond {
+		o.mu.Unlock()
+		return
+	}
+	o.lastUpdate = now
 	base := o.lastMsg
 	o.mu.Unlock()
 	if strings.TrimSpace(base) == "" {

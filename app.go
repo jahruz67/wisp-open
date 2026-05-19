@@ -465,6 +465,15 @@ func (a *App) SaveSettings(settings map[string]interface{}) string {
 				a.hotkeyListener = hotkey.NewListener(val, a.StartRecording, a.StopRecording)
 			} else {
 				a.hotkeyListener = hotkey.NewListener(val, a.ToggleRecording, func() {})
+				a.hotkeyListener.SetRegistrationErrorCallback(func(err error) {
+					logger.Error("Linux hotkey registration failed: %v", err)
+					go func() {
+						time.Sleep(2 * time.Second)
+						if a.overlay != nil {
+							a.overlay.Show("Shortcut registration failed. Please add a custom system shortcut calling 'wis-free-v3 --action=toggle' as a fallback.")
+						}
+					}()
+				})
 			}
 			a.hotkeyListener.Start()
 		}
@@ -622,6 +631,15 @@ func (a *App) startupHeadless() {
 	} else {
 		// Linux (Wayland fallback) uses toggle mode: keydown toggles, keyup ignored
 		a.hotkeyListener = hotkey.NewListener(a.config.Shortcut, a.ToggleRecording, func() {})
+		a.hotkeyListener.SetRegistrationErrorCallback(func(err error) {
+			logger.Error("Linux hotkey registration failed: %v", err)
+			go func() {
+				time.Sleep(2 * time.Second)
+				if a.overlay != nil {
+					a.overlay.Show("Shortcut registration failed. Please add a custom system shortcut calling 'wis-free-v3 --action=toggle' as a fallback.")
+				}
+			}()
+		})
 	}
 	a.hotkeyListener.Start()
 
