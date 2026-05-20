@@ -67,9 +67,8 @@ func Close() {
 }
 
 // Info logs an informational message with timestamp.
-// Modified to do nothing so only errors are logged.
 func Info(format string, args ...interface{}) {
-	// Do nothing
+	log("INFO", format, args...)
 }
 
 // Error logs an error message with timestamp.
@@ -77,7 +76,7 @@ func Error(format string, args ...interface{}) {
 	log("ERROR", format, args...)
 }
 
-// log writes a formatted log message to the log file.
+// log writes a formatted log message to the log file and console.
 func log(level, format string, args ...interface{}) {
 	logMutex.Lock()
 	defer logMutex.Unlock()
@@ -94,6 +93,13 @@ func log(level, format string, args ...interface{}) {
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 	message := fmt.Sprintf(format, args...)
 	logLine := fmt.Sprintf("[%s] %s: %s\n", timestamp, level, message)
+
+	// Print to console for real-time terminal output
+	if level == "ERROR" {
+		fmt.Fprint(os.Stderr, logLine)
+	} else {
+		fmt.Fprint(os.Stdout, logLine)
+	}
 
 	if logFile != nil {
 		logFile.WriteString(logLine)
