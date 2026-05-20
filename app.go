@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sync/atomic"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"wis-free-v3/internal/audio/recorder"
@@ -90,6 +90,7 @@ func (a *App) startup(ctx context.Context) {
 
 	// Initialize components
 	a.startupHeadless()
+	a.startLinuxPressDaemon()
 
 	// When the user launches the app again while it is already running (tray-only),
 	// the second process signals us here so the settings window becomes visible.
@@ -338,7 +339,6 @@ func (a *App) processRecording(recordingPath string) {
 	transcribeDuration := time.Since(startTranscribe)
 	logger.Info("Transcription completed in %v", transcribeDuration)
 
-
 	if err != nil {
 		logger.Error("Transcription failed: %v", err)
 		tray.UpdateStatus("Ready")
@@ -380,14 +380,14 @@ func (a *App) processRecording(recordingPath string) {
 	} else {
 		// Save old clipboard
 		oldClip, clipErr := wailsruntime.ClipboardGetText(a.ctx)
-		
+
 		// Copy to clipboard
 		wailsruntime.ClipboardSetText(a.ctx, refinedText)
 
 		// Paste
 		a.pasteText()
 
-		// Restore old clipboard after a short delay, but ONLY if the user 
+		// Restore old clipboard after a short delay, but ONLY if the user
 		// hasn't manually copied something else or another burst hasn't finished.
 		if clipErr == nil && oldClip != "" {
 			go func() {
@@ -437,6 +437,12 @@ func (a *App) GetSettings() map[string]interface{} {
 	conf["history"] = a.config.History
 	conf["startup"] = platform.IsInStartup()
 	conf["app_version"] = AppVersion
+	if runtime.GOOS == "linux" {
+		if exePath, err := os.Executable(); err == nil {
+			conf["linux_press_command"] = exePath + " --press"
+		}
+		conf["linux_press_mode"] = true
+	}
 	return conf
 }
 
@@ -445,35 +451,37 @@ func (a *App) SaveSettings(settings map[string]interface{}) string {
 	if val, ok := settings["api_key"].(string); ok {
 		a.config.APIKey = val
 	}
-	if val, ok := settings["shortcut"].(string); ok {
-		_, _, modOnly, ok := hotkey.ParseShortcut(val)
-		if !ok {
-			logger.Error("Invalid shortcut: %s (rejected)", val)
-			return "Invalid shortcut - use modifiers plus a key (e.g. ctrl+k), or modifier-only on Windows (e.g. ctrl+win)"
-		}
-		if modOnly && runtime.GOOS != "windows" {
-			return "Modifier-only shortcuts (like ctrl+win) are only supported on Windows"
-		}
-
-		a.config.Shortcut = val
-		// Update existing listener with new shortcut (hot-swap)
-		if a.hotkeyListener != nil {
-			a.hotkeyListener.UpdateShortcut(val)
-		} else {
-			// Should not happen if app started correctly, but just in case
-			a.hotkeyListener = hotkey.NewListener(val, a.StartRecording, a.StopRecording)
-			if runtime.GOOS != "windows" {
-				a.hotkeyListener.SetRegistrationErrorCallback(func(err error) {
-					logger.Error("Linux hotkey registration failed: %v", err)
-					go func() {
-						time.Sleep(2 * time.Second)
-						if a.overlay != nil {
-							a.overlay.Show("Shortcut registration failed. Please add a custom system shortcut calling 'wis-free-v3 --action=toggle' as a fallback.")
-						}
-					}()
-				})
+	if runtime.GOOS != "linux" {
+		if val, ok := settings["shortcut"].(string); ok {
+			_, _, modOnly, ok := hotkey.ParseShortcut(val)
+			if !ok {
+				logger.Error("Invalid shortcut: %s (rejected)", val)
+				return "Invalid shortcut - use modifiers plus a key (e.g. ctrl+k), or modifier-only on Windows (e.g. ctrl+win)"
 			}
-			a.hotkeyListener.Start()
+			if modOnly && runtime.GOOS != "windows" {
+				return "Modifier-only shortcuts (like ctrl+win) are only supported on Windows"
+			}
+
+			a.config.Shortcut = val
+			// Update existing listener with new shortcut (hot-swap)
+			if a.hotkeyListener != nil {
+				a.hotkeyListener.UpdateShortcut(val)
+			} else {
+				// Should not happen if app started correctly, but just in case
+				a.hotkeyListener = hotkey.NewListener(val, a.StartRecording, a.StopRecording)
+				if runtime.GOOS != "windows" {
+					a.hotkeyListener.SetRegistrationErrorCallback(func(err error) {
+						logger.Error("Linux hotkey registration failed: %v", err)
+						go func() {
+							time.Sleep(2 * time.Second)
+							if a.overlay != nil {
+								a.overlay.Show("Shortcut registration failed. Please add a custom system shortcut calling 'wis-free-v3 --action=toggle' as a fallback.")
+							}
+						}()
+					})
+				}
+				a.hotkeyListener.Start()
+			}
 		}
 	}
 	if val, ok := settings["whisper_model"].(string); ok {
