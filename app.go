@@ -632,23 +632,34 @@ func (a *App) startupHeadless() {
 	}
 
 	// Initialize Hotkey Listener
-	a.hotkeyListener = hotkey.NewListener(a.config.Shortcut, a.StartRecording, a.StopRecording)
-	if runtime.GOOS != "windows" {
-		a.hotkeyListener.SetRegistrationErrorCallback(func(err error) {
-			logger.Error("Linux hotkey registration failed: %v", err)
-			go func() {
-				time.Sleep(2 * time.Second)
-				if a.overlay != nil {
-					a.overlay.Show("Shortcut registration failed. Please add a custom system shortcut calling 'wis-free-v3 --action=toggle' as a fallback.")
-				}
-			}()
-		})
+	if shouldStartBuiltInHotkeyListener() {
+		a.hotkeyListener = hotkey.NewListener(a.config.Shortcut, a.StartRecording, a.StopRecording)
+		if runtime.GOOS != "windows" {
+			a.hotkeyListener.SetRegistrationErrorCallback(func(err error) {
+				logger.Error("Linux hotkey registration failed: %v", err)
+				go func() {
+					time.Sleep(2 * time.Second)
+					if a.overlay != nil {
+						a.overlay.Show("Shortcut registration failed. Add a custom system shortcut with the command shown in Settings.")
+					}
+				}()
+			})
+		}
+		a.hotkeyListener.Start()
+	} else {
+		logger.Info("Linux portal hotkey disabled; use the --press command from Settings for GNOME shortcuts")
 	}
-	a.hotkeyListener.Start()
 
 	logger.Info("Components initialized successfully!")
 
 	logger.Info("Basic app components loaded, continuing startup...")
+}
+
+func shouldStartBuiltInHotkeyListener() bool {
+	if runtime.GOOS != "linux" {
+		return true
+	}
+	return os.Getenv("WISFREE_USE_PORTAL_HOTKEY") == "1"
 }
 
 // Shutdown cleans up resources

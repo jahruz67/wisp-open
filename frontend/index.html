@@ -333,7 +333,16 @@
                 const settings = await window.go.main.App.GetSettings();
 
                 document.getElementById('apiKey').value = settings.api_key || '';
-                document.getElementById('shortcutInput').value = settings.shortcut || 'alt+z';
+                const shortcutInput = document.getElementById('shortcutInput');
+                if (shortcutInput) {
+                    shortcutInput.value = settings.shortcut || 'alt+z';
+                }
+                if (settings.linux_press_mode) {
+                    const section = document.getElementById('linuxPressSection');
+                    const cmdInput = document.getElementById('linuxPressCommand');
+                    if (section) section.style.display = 'block';
+                    if (cmdInput) cmdInput.value = settings.linux_press_command || '';
+                }
                 document.getElementById('whisperModel').value = settings.whisper_model || 'whisper-large-v3-turbo';
                 document.getElementById('aiModel').value = settings.ai_model || 'llama-3.3-70b-versatile';
                 document.getElementById('aiPrompt').value = settings.ai_prompt || '';
@@ -405,6 +414,25 @@
         window.savePrompt = async function () {
             await window.go.main.App.SaveSettings({ ai_prompt: document.getElementById('aiPrompt').value.trim() });
             showSaveStatus('Prompt saved');
+        };
+
+        window.copyLinuxPressCommand = async function () {
+            const cmdInput = document.getElementById('linuxPressCommand');
+            if (!cmdInput) return;
+
+            const command = cmdInput.value || '';
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(command);
+                } else {
+                    cmdInput.focus();
+                    cmdInput.select();
+                    document.execCommand('copy');
+                }
+                showSaveStatus('Command copied');
+            } catch (err) {
+                console.error('Failed to copy Linux command:', err);
+            }
         };
 
         window.toggleStartup = async function () {
