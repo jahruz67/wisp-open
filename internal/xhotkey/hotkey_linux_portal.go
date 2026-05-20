@@ -13,7 +13,19 @@ import (
 	"time"
 
 	"github.com/godbus/dbus/v5"
+	"wis-free-v3/internal/logger"
 )
+
+func unwrapVariant(val interface{}) interface{} {
+	for {
+		if v, ok := val.(dbus.Variant); ok {
+			val = v.Value()
+		} else {
+			break
+		}
+	}
+	return val
+}
 
 const (
 	portalBusName                    = "org.freedesktop.portal.Desktop"
@@ -162,11 +174,31 @@ func portalWaitRequest(conn *dbus.Conn, reqPath dbus.ObjectPath) (uint32, map[st
 			if len(sig.Body) < 2 {
 				continue
 			}
-			code, ok := sig.Body[0].(uint32)
-			if !ok {
+			rawCode := unwrapVariant(sig.Body[0])
+			var code uint32
+			switch x := rawCode.(type) {
+			case uint32:
+				code = x
+			case int:
+				code = uint32(x)
+			case int32:
+				code = uint32(x)
+			case uint8:
+				code = uint32(x)
+			default:
 				continue
 			}
-			results, _ := sig.Body[1].(map[string]dbus.Variant)
+			rawResults := unwrapVariant(sig.Body[1])
+			var results map[string]dbus.Variant
+			switch resMap := rawResults.(type) {
+			case map[string]dbus.Variant:
+				results = resMap
+			case map[string]interface{}:
+				results = make(map[string]dbus.Variant)
+				for k, val := range resMap {
+					results[k] = dbus.MakeVariant(val)
+				}
+			}
 			return code, results, nil
 		case <-timeout.C:
 			return 0, nil, fmt.Errorf("portal request timed out")
@@ -175,7 +207,8 @@ func portalWaitRequest(conn *dbus.Conn, reqPath dbus.ObjectPath) (uint32, map[st
 }
 
 func variantToObjectPath(v dbus.Variant) (dbus.ObjectPath, bool) {
-	switch x := v.Value().(type) {
+	val := unwrapVariant(v)
+	switch x := val.(type) {
 	case dbus.ObjectPath:
 		return x, true
 	case string:
@@ -317,6 +350,14 @@ func (hk *Hotkey) portalSignalLoop() {
 		return
 	}
 
+	sessStr := string(sess)
+	var token string
+	if idx := strings.LastIndex(sessStr, "/"); idx != -1 {
+		token = sessStr[idx+1:]
+	} else {
+		token = sessStr
+	}
+
 	ch := make(chan *dbus.Signal, 32)
 	conn.Signal(ch)
 	defer conn.RemoveSignal(ch)
@@ -325,10 +366,12 @@ func (hk *Hotkey) portalSignalLoop() {
 		ifaceGlobalShortcuts,
 	)
 	if err := conn.BusObject().Call("org.freedesktop.DBus.AddMatch", 0, rule).Store(); err != nil {
-		log.Printf("wis-free-v3 hotkey: AddMatch GlobalShortcuts: %v", err)
+		logger.Error("wis-free-v3 hotkey: AddMatch GlobalShortcuts: %v", err)
 		return
 	}
 	defer func() { _ = conn.BusObject().Call("org.freedesktop.DBus.RemoveMatch", 0, rule).Store() }()
+
+	logger.Info("Listening for global shortcut signals. Session token: %s", token)
 
 	for {
 		select {
@@ -341,22 +384,38 @@ func (hk *Hotkey) portalSignalLoop() {
 			if len(sig.Body) < 2 {
 				continue
 			}
-			sessVar, ok := sig.Body[0].(dbus.ObjectPath)
-			if !ok {
-				if s, ok := sig.Body[0].(string); ok {
-					sessVar = dbus.ObjectPath(s)
-				} else {
-					continue
-				}
-			}
-			if sessVar != sess {
+			rawSess := unwrapVariant(sig.Body[0])
+			var sessVar dbus.ObjectPath
+			switch x := rawSess.(type) {
+			case dbus.ObjectPath:
+				sessVar = x
+			case string:
+				sessVar = dbus.ObjectPath(x)
+			default:
 				continue
 			}
-			id, ok := sig.Body[1].(string)
+
+			sessVarStr := string(sessVar)
+			match := false
+			if sessVar == sess {
+				match = true
+			} else if token != "" && (strings.HasSuffix(sessVarStr, "/"+token) || strings.Contains(sessVarStr, token)) {
+				match = true
+			}
+
+			if !match {
+				continue
+			}
+
+			rawID := unwrapVariant(sig.Body[1])
+			id, ok := rawID.(string)
 			if !ok || id != wisfreeGlobalShortcutID {
 				continue
 			}
+
 			name := sig.Name
+			logger.Info("Matched global shortcut signal: name=%s", name)
+
 			switch {
 			case name == "Activated" || strings.HasSuffix(name, ".Activated"):
 				go func() { hk.keydownIn <- Event{} }()
