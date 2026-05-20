@@ -374,32 +374,7 @@ func (a *App) processRecording(recordingPath string) {
 		wailsruntime.EventsEmit(a.ctx, "history:updated")
 	}
 
-	if len(refinedText) < 50 {
-		// Type short text directly to avoid clipboard interference
-		robotgo.TypeStr(refinedText)
-	} else {
-		// Save old clipboard
-		oldClip, clipErr := wailsruntime.ClipboardGetText(a.ctx)
-
-		// Copy to clipboard
-		wailsruntime.ClipboardSetText(a.ctx, refinedText)
-
-		// Paste
-		a.pasteText()
-
-		// Restore old clipboard after a short delay, but ONLY if the user
-		// hasn't manually copied something else or another burst hasn't finished.
-		if clipErr == nil && oldClip != "" {
-			go func() {
-				time.Sleep(1000 * time.Millisecond)
-				current, _ := wailsruntime.ClipboardGetText(a.ctx)
-				if current == refinedText {
-					wailsruntime.ClipboardSetText(a.ctx, oldClip)
-					logger.Info("Clipboard history restored")
-				}
-			}()
-		}
-	}
+	a.insertTranscription(refinedText)
 
 	// Clean up the recording file
 	if removeErr := os.Remove(recordingPath); removeErr != nil {
@@ -413,15 +388,6 @@ func (a *App) processRecording(recordingPath string) {
 	if a.overlay != nil {
 		a.overlay.Hide()
 	}
-}
-
-// pasteText simulates Ctrl+V to paste from clipboard
-func (a *App) pasteText() {
-	// Give a substantial delay for Linux GTK clipboard sync
-	time.Sleep(200 * time.Millisecond)
-
-	// Simulate Ctrl+V using modern robotgo API
-	robotgo.KeyTap("v", "ctrl")
 }
 
 // GetSettings returns the current configuration
