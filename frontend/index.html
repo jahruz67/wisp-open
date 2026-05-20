@@ -54,6 +54,7 @@
                 </div>
                 <p class="hint">GNOME: Settings -> Keyboard -> Custom Shortcuts -> Add a shortcut with the copied command.</p>
                 <p class="hint">KDE: System Settings -> Shortcuts -> Command/URL -> Add a shortcut with the copied command.</p>
+                <div id="linuxYdotoolStatus" style="display: none; margin-top: 12px; padding: 10px 12px; border-radius: 7px; font-size: 12px; line-height: 1.45;"></div>
             </div>
 
             <!-- Microphone -->
@@ -318,6 +319,37 @@
             });
         }
 
+        function renderLinuxYdotoolStatus(status) {
+            const el = document.getElementById('linuxYdotoolStatus');
+            if (!el || !status) return;
+
+            const ready = !!status.ready;
+            el.style.display = 'block';
+            el.style.background = ready ? 'var(--green-dim)' : 'var(--red-dim)';
+            el.style.color = ready ? 'var(--green)' : 'var(--red)';
+            el.style.border = ready ? '1px solid rgba(61, 186, 110, 0.25)' : '1px solid rgba(224, 82, 82, 0.25)';
+            el.innerHTML = '';
+
+            const title = document.createElement('div');
+            title.style.fontWeight = '600';
+            title.textContent = ready ? 'Automatic paste ready' : 'Automatic paste needs ydotool setup';
+            el.appendChild(title);
+
+            const message = document.createElement('div');
+            message.style.marginTop = '4px';
+            message.textContent = status.message || '';
+            el.appendChild(message);
+
+            if (!ready && Array.isArray(status.setup_commands) && status.setup_commands.length) {
+                const pre = document.createElement('pre');
+                pre.style.whiteSpace = 'pre-wrap';
+                pre.style.margin = '8px 0 0';
+                pre.style.color = 'inherit';
+                pre.textContent = status.setup_commands.join('\n');
+                el.appendChild(pre);
+            }
+        }
+
         async function refreshHistoryFromBackend() {
             try {
                 const settings = await window.go.main.App.GetSettings();
@@ -342,6 +374,7 @@
                     const cmdInput = document.getElementById('linuxPressCommand');
                     if (section) section.style.display = 'block';
                     if (cmdInput) cmdInput.value = settings.linux_press_command || '';
+                    renderLinuxYdotoolStatus(settings.linux_ydotool_status);
                 }
                 document.getElementById('whisperModel').value = settings.whisper_model || 'whisper-large-v3-turbo';
                 document.getElementById('aiModel').value = settings.ai_model || 'llama-3.3-70b-versatile';

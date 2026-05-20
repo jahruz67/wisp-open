@@ -408,6 +408,7 @@ func (a *App) GetSettings() map[string]interface{} {
 			conf["linux_press_command"] = exePath + " --press"
 		}
 		conf["linux_press_mode"] = true
+		conf["linux_ydotool_status"] = linuxYdotoolStatus()
 	}
 	return conf
 }
