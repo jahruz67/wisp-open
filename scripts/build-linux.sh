@@ -140,10 +140,6 @@ if command_exists pkg-config; then
         echo "[WARNING] Missing Wails dependencies (GTK3 / WebKit2GTK)."
         MISSING_DEPS=1
     fi
-    if ! pkg-config --exists x11 xtst xcb xkbcommon-x11; then
-        echo "[WARNING] Missing gohook dependencies (X11 / Xtst / Xcb / Xkbcommon)."
-        MISSING_DEPS=1
-    fi
     if ! pkg-config --exists alsa; then
         echo "[WARNING] Missing audio dependencies (ALSA)."
         MISSING_DEPS=1
@@ -158,22 +154,20 @@ if [ $MISSING_DEPS -eq 1 ]; then
     echo ""
     echo "It looks like you are missing some required libraries."
     echo ""
-    echo "Wayland note: global hotkeys use the XDG GlobalShortcuts portal when WAYLAND_DISPLAY"
-    echo "or XDG_SESSION_TYPE=wayland is set (xdg-desktop-portal + a supporting compositor, e.g. KDE Plasma)."
-    echo "Override: WISFREE_USE_X11_HOTKEY=1 forces X11 grabs (needs XWayland);"
-    echo "WISFREE_USE_PORTAL_HOTKEY=1 forces the portal on X11 sessions for testing."
+    echo "Wayland note: global hotkeys use the XDG GlobalShortcuts portal (xdg-desktop-portal"
+    echo "with a supporting compositor, e.g. KDE Plasma or GNOME)."
     echo ""
     
-    DEBIAN_DEPS="build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.0-dev libx11-dev libx11-xcb-dev libxtst-dev libasound2-dev libayatana-appindicator3-dev libxkbcommon-x11-dev"
+    DEBIAN_DEPS="build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.0-dev libasound2-dev libayatana-appindicator3-dev"
     # Runtime niceties (optional): libnotify-bin — status toasts; playerctl — pause media while recording
     DEBIAN_RUNTIME_OPT="libnotify-bin playerctl"
     # Fedora 40+: WebKit2GTK 4.0 packages are gone; use 4.1 + Wails -tags webkit2_41 (see wails build below).
     # pkgconf-pkg-config provides `pkg-config` on Fedora.
-    FEDORA_DEPS="gcc gcc-c++ make pkgconf-pkg-config gtk3-devel webkit2gtk4.1-devel libX11-devel libxcb-devel libXtst-devel alsa-lib-devel libayatana-appindicator-gtk3-devel libxkbcommon-x11-devel"
+    FEDORA_DEPS="gcc gcc-c++ make pkgconf-pkg-config gtk3-devel webkit2gtk4.1-devel alsa-lib-devel libayatana-appindicator-gtk3-devel"
     # Same as FEDORA_DEPS but classic libappindicator (some spins/repos lack Ayatana -devel)
-    FEDORA_DEPS_ALT="gcc gcc-c++ make pkgconf-pkg-config gtk3-devel webkit2gtk4.1-devel libX11-devel libxcb-devel libXtst-devel alsa-lib-devel libappindicator-gtk3-devel libxkbcommon-x11-devel"
+    FEDORA_DEPS_ALT="gcc gcc-c++ make pkgconf-pkg-config gtk3-devel webkit2gtk4.1-devel alsa-lib-devel libappindicator-gtk3-devel"
     FEDORA_RUNTIME_OPT="libnotify playerctl xdg-desktop-portal"
-    ARCH_DEPS="base-devel pkgconf gtk3 webkit2gtk libx11 libxtst alsa-lib libayatana-appindicator libxkbcommon-x11"
+    ARCH_DEPS="base-devel pkgconf gtk3 webkit2gtk alsa-lib libayatana-appindicator"
     ARCH_RUNTIME_OPT="libnotify playerctl"
     
     echo "The full list of dependencies needed:"

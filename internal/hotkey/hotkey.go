@@ -170,7 +170,11 @@ func (l *Listener) eventLoop(hk *xhk.Hotkey) {
 				case <-time.After(20 * time.Millisecond):
 					// Genuine second press. Toggle off.
 					logger.Info("Shortcut activated again: toggling recording (Wayland toggle fallback)")
-					go l.startCallback()
+					if l.stopCallback != nil {
+						go l.stopCallback()
+					} else {
+						go l.startCallback()
+					}
 					isRecording = false
 				}
 			}

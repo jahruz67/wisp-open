@@ -461,10 +461,8 @@ func (a *App) SaveSettings(settings map[string]interface{}) string {
 			a.hotkeyListener.UpdateShortcut(val)
 		} else {
 			// Should not happen if app started correctly, but just in case
-			if runtime.GOOS == "windows" {
-				a.hotkeyListener = hotkey.NewListener(val, a.StartRecording, a.StopRecording)
-			} else {
-				a.hotkeyListener = hotkey.NewListener(val, a.ToggleRecording, func() {})
+			a.hotkeyListener = hotkey.NewListener(val, a.StartRecording, a.StopRecording)
+			if runtime.GOOS != "windows" {
 				a.hotkeyListener.SetRegistrationErrorCallback(func(err error) {
 					logger.Error("Linux hotkey registration failed: %v", err)
 					go func() {
@@ -626,11 +624,8 @@ func (a *App) startupHeadless() {
 	}
 
 	// Initialize Hotkey Listener
-	if runtime.GOOS == "windows" {
-		a.hotkeyListener = hotkey.NewListener(a.config.Shortcut, a.StartRecording, a.StopRecording)
-	} else {
-		// Linux (Wayland fallback) uses toggle mode: keydown toggles, keyup ignored
-		a.hotkeyListener = hotkey.NewListener(a.config.Shortcut, a.ToggleRecording, func() {})
+	a.hotkeyListener = hotkey.NewListener(a.config.Shortcut, a.StartRecording, a.StopRecording)
+	if runtime.GOOS != "windows" {
 		a.hotkeyListener.SetRegistrationErrorCallback(func(err error) {
 			logger.Error("Linux hotkey registration failed: %v", err)
 			go func() {
