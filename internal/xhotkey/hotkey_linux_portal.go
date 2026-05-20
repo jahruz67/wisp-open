@@ -343,26 +343,18 @@ func (hk *Hotkey) portalSignalLoop() {
 
 	hk.mu.Lock()
 	conn := hk.portalConn
-	sess := hk.sessionPath
 	hk.mu.Unlock()
 	if conn == nil {
 		return
 	}
 
-	sessStr := string(sess)
-	var token string
-	if idx := strings.LastIndex(sessStr, "/"); idx != -1 {
-		token = sessStr[idx+1:]
-	} else {
-		token = sessStr
-	}
-
 	ch := make(chan *dbus.Signal, 32)
 	conn.Signal(ch)
 	defer conn.RemoveSignal(ch)
+	
 	rule := fmt.Sprintf(
-		"type='signal',interface='%s'",
-		ifaceGlobalShortcuts,
+		"type='signal',sender='%s',interface='%s'",
+		portalBusName, ifaceGlobalShortcuts,
 	)
 	if err := conn.BusObject().Call("org.freedesktop.DBus.AddMatch", 0, rule).Store(); err != nil {
 		logger.Error("wis-free-v3 hotkey: AddMatch GlobalShortcuts: %v", err)
@@ -370,7 +362,7 @@ func (hk *Hotkey) portalSignalLoop() {
 	}
 	defer func() { _ = conn.BusObject().Call("org.freedesktop.DBus.RemoveMatch", 0, rule).Store() }()
 
-	logger.Info("Listening for global shortcut signals. Session token: %s", token)
+	logger.Info("Listening for global shortcut signals (sender=%s, interface=%s)", portalBusName, ifaceGlobalShortcuts)
 
 	for {
 		select {
@@ -383,43 +375,29 @@ func (hk *Hotkey) portalSignalLoop() {
 			if len(sig.Body) < 2 {
 				continue
 			}
-			rawSess := unwrapVariant(sig.Body[0])
-			var sessVar dbus.ObjectPath
-			switch x := rawSess.(type) {
-			case dbus.ObjectPath:
-				sessVar = x
-			case string:
-				sessVar = dbus.ObjectPath(x)
-			default:
-				continue
-			}
 
-			sessVarStr := string(sessVar)
-			match := false
-			if sessVar == sess {
-				match = true
-			} else if token != "" && (strings.HasSuffix(sessVarStr, "/"+token) || strings.Contains(sessVarStr, token)) {
-				match = true
-			}
-
-			if !match {
-				continue
-			}
-
+			// Bypass strict session path checking to avoid mismatch bugs.
+			// The shortcut ID is unique to our application.
 			rawID := unwrapVariant(sig.Body[1])
 			id, ok := rawID.(string)
 			if !ok || id != wisfreeGlobalShortcutID {
 				continue
 			}
 
-			name := sig.Name
-			logger.Info("Matched global shortcut signal: name=%s", name)
+			logger.Info("Matched global shortcut signal: name=%s", sig.Name)
 
-			switch {
-			case name == "Activated" || strings.HasSuffix(name, ".Activated"):
+			switch sig.Name {
+			case ifaceGlobalShortcuts + ".Activated":
 				go func() { hk.keydownIn <- Event{} }()
-			case name == "Deactivated" || strings.HasSuffix(name, ".Deactivated"):
+			case ifaceGlobalShortcuts + ".Deactivated":
 				go func() { hk.keyupIn <- Event{} }()
+			default:
+				// Fallback for different bus routing names just in case
+				if strings.HasSuffix(sig.Name, ".Activated") {
+					go func() { hk.keydownIn <- Event{} }()
+				} else if strings.HasSuffix(sig.Name, ".Deactivated") {
+					go func() { hk.keyupIn <- Event{} }()
+				}
 			}
 		}
 	}

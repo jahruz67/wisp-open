@@ -16,6 +16,7 @@ import (
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/linux"
 )
 
 // Application constants
@@ -86,6 +87,9 @@ func main() {
 		OnBeforeClose:    app.beforeClose,
 		StartHidden:      true,
 		Bind:             []interface{}{app},
+		Linux: &linux.Options{
+			ProgramName: "wis-free-v3",
+		},
 	})
 
 	if err != nil {
