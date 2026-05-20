@@ -91,22 +91,21 @@ func runSecondInstanceListener() {
 				defer conn.Close()
 				buf := make([]byte, 1)
 				n, _ := conn.Read(buf)
+				cmd := instanceCmdShow
 				if n == 1 {
-					select {
-					case secondInstanceCommand <- buf[0]:
-					default:
-					}
-				} else {
-					// Backwards-compatible: any connection with no payload = show window.
-					select {
-					case secondInstanceCommand <- instanceCmdShow:
-					default:
-					}
+					cmd = buf[0]
+				}
+				// Backwards-compatible: any connection with no payload = show window.
+				select {
+				case secondInstanceCommand <- cmd:
+				default:
 				}
 				_, _ = io.Copy(io.Discard, conn)
-				select {
-				case secondInstanceWake <- struct{}{}:
-				default:
+				if cmd == instanceCmdShow {
+					select {
+					case secondInstanceWake <- struct{}{}:
+					default:
+					}
 				}
 			}(c)
 		}
