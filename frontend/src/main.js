@@ -24,11 +24,17 @@ async function loadSettings() {
 
         // Populate fields
         document.getElementById('apiKey').value = settings.api_key || '';
-        document.getElementById('shortcutInput').value = settings.shortcut || 'alt+z';
         document.getElementById('whisperModel').value = settings.whisper_model || 'whisper-large-v3-turbo';
         document.getElementById('aiModel').value = settings.ai_model || 'llama-3.3-70b-versatile';
         document.getElementById('aiPrompt').value = settings.ai_prompt || '';
         document.getElementById('startupToggle').checked = settings.startup || false;
+
+        if (settings.linux_press_mode) {
+            const section = document.getElementById('linuxPressSection');
+            const cmdInput = document.getElementById('linuxPressCommand');
+            if (section) section.style.display = 'block';
+            if (cmdInput) cmdInput.value = settings.linux_press_command || '';
+        }
 
         // Load history
         renderHistory(settings.history || []);
@@ -123,24 +129,27 @@ async function saveApiKey() {
     showToast('API Key saved');
 }
 
-// Save Shortcut
-async function saveShortcut() {
-    const shortcut = document.getElementById('shortcutInput').value.trim().toLowerCase();
 
-    if (!shortcut) {
-        alert('Please enter a shortcut');
-        return;
+async function copyLinuxPressCommand() {
+    const cmdInput = document.getElementById('linuxPressCommand');
+    if (!cmdInput) return;
+
+    const command = cmdInput.value || '';
+    try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(command);
+        } else {
+            cmdInput.focus();
+            cmdInput.select();
+            document.execCommand('copy');
+        }
+        showToast('Command copied');
+    } catch (err) {
+        console.error('Failed to copy Linux command:', err);
     }
-
-    const parts = shortcut.split('+');
-    if (parts.length < 2) {
-        alert('Shortcut must have a modifier + key (e.g., ctrl+x)');
-        return;
-    }
-
-    await saveSetting('shortcut', shortcut);
-    showToast('Shortcut saved: ' + shortcut);
 }
+
+window.copyLinuxPressCommand = copyLinuxPressCommand;
 
 // Save Whisper Model
 async function saveWhisperModel() {
