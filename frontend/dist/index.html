@@ -43,18 +43,19 @@
 
             <div class="section-group-label">Input</div>
 
-            <!-- Shortcut -->
-            <div class="section">
-                <label>Hotkey</label>
+            <!-- Linux Wayland Hotkey Command -->
+            <div class="section" id="linuxPressSection" style="display: none;">
+                <label>System Hotkey Command (Linux)</label>
                 <div class="form-control">
                     <div class="flex-row">
                         <div class="input-wrapper">
-                            <input type="text" id="shortcutInput" placeholder="Click Record to set..." readonly>
+                            <input type="text" id="linuxPressCommand" readonly>
                         </div>
-                        <button onclick="recordShortcut()" id="recordBtn">Record</button>
+                        <button onclick="copyLinuxPressCommand()">Copy</button>
                     </div>
                 </div>
-                <p class="hint">Click Record, then press your desired key combination (e.g. Ctrl+X).</p>
+                <p class="hint">GNOME: Settings -> Keyboard -> Custom Shortcuts -> Add a shortcut using the copied command.</p>
+                <p class="hint">KDE: System Settings -> Shortcuts -> Command/URL -> Add a shortcut using the copied command.</p>
             </div>
 
             <!-- Microphone -->
