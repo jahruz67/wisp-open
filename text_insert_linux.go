@@ -96,6 +96,11 @@ func typeLinuxTextWithYdotool(text string) error {
 		return err
 	}
 
+	fastArgs := []string{"type", "-d", "1", "--file", "-"}
+	if err := runLinuxInputCommand(path, fastArgs, text, linuxTextTyperTimeout(text), socketPath); err == nil {
+		return nil
+	}
+
 	return runLinuxInputCommand(path, []string{"type", "--file", "-"}, text, linuxTextTyperTimeout(text), socketPath)
 }
 
