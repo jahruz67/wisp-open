@@ -56,6 +56,10 @@ A high-performance, cross-platform (Windows & Linux) voice dictation application
 
 Settings are managed via the built-in UI (Right-click tray → Settings) or manually in `%USERPROFILE%\.wis-free-v3\config.json`.
 
+### Linux Wayland Paste Setup
+
+If Settings says automatic paste needs `ydotool` setup, run the commands shown there. After those commands finish, restart your computer, then open WIS Free V3 again.
+
 ```json
 {
     "api_key": "gsk_...",

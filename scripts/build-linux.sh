@@ -159,16 +159,16 @@ if [ $MISSING_DEPS -eq 1 ]; then
     echo ""
     
     DEBIAN_DEPS="build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.0-dev libasound2-dev libayatana-appindicator3-dev"
-    # Runtime niceties (optional): libnotify-bin — status toasts; playerctl — pause media while recording
-    DEBIAN_RUNTIME_OPT="libnotify-bin playerctl"
+    # Runtime nicety (optional): playerctl pauses media while recording
+    DEBIAN_RUNTIME_OPT="playerctl"
     # Fedora 40+: WebKit2GTK 4.0 packages are gone; use 4.1 + Wails -tags webkit2_41 (see wails build below).
     # pkgconf-pkg-config provides `pkg-config` on Fedora.
     FEDORA_DEPS="gcc gcc-c++ make pkgconf-pkg-config gtk3-devel webkit2gtk4.1-devel alsa-lib-devel libayatana-appindicator-gtk3-devel"
     # Same as FEDORA_DEPS but classic libappindicator (some spins/repos lack Ayatana -devel)
     FEDORA_DEPS_ALT="gcc gcc-c++ make pkgconf-pkg-config gtk3-devel webkit2gtk4.1-devel alsa-lib-devel libappindicator-gtk3-devel"
-    FEDORA_RUNTIME_OPT="libnotify playerctl xdg-desktop-portal"
+    FEDORA_RUNTIME_OPT="playerctl xdg-desktop-portal"
     ARCH_DEPS="base-devel pkgconf gtk3 webkit2gtk alsa-lib libayatana-appindicator"
-    ARCH_RUNTIME_OPT="libnotify playerctl"
+    ARCH_RUNTIME_OPT="playerctl"
     
     echo "The full list of dependencies needed:"
     echo "  [Ubuntu/Debian]: sudo apt update && sudo apt install -y $DEBIAN_DEPS"

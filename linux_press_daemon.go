@@ -5,7 +5,6 @@ package main
 import (
 	"net/http"
 	"os"
-	"os/exec"
 	"sync"
 	"time"
 )
@@ -33,7 +32,6 @@ const (
 func init() {
 	if hasPressFlag(os.Args[1:]) {
 		if err := sendLinuxPressPing(); err != nil {
-			_ = exec.Command("notify-send", "Voice App", "Please open the main application first").Run()
 			os.Exit(1)
 		}
 		os.Exit(0)

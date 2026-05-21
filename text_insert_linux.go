@@ -19,26 +19,29 @@ import (
 )
 
 func (a *App) insertTranscription(text string) {
+	a.releaseLinuxInputFocus()
+
+	if isASCII(text) {
+		if err := typeLinuxTextWithYdotool(text); err == nil {
+			logger.Info("Typed transcription on Linux using ydotool (%d chars)", utf8.RuneCountInString(text))
+			return
+		} else {
+			logger.Error("Linux auto-type unavailable via ydotool: %v", err)
+		}
+	} else {
+		logger.Info("Skipping ydotool direct typing fallback for non-ASCII transcript")
+	}
+
 	if err := wailsruntime.ClipboardSetText(a.ctx, text); err != nil {
 		logger.Error("Failed to copy transcription to clipboard: %v", err)
 	} else {
 		waitForLinuxClipboardText(a.ctx, text)
-		a.releaseLinuxInputFocus()
 		if err := pasteLinuxClipboardWithYdotool(); err == nil {
-			logger.Info("Pasted transcription on Linux using ydotool (%d chars)", utf8.RuneCountInString(text))
+			logger.Info("Pasted transcription on Linux using clipboard + ydotool (%d chars)", utf8.RuneCountInString(text))
 			return
 		} else {
 			logger.Error("Linux auto-paste unavailable via ydotool: %v", err)
 		}
-	}
-
-	if !isASCII(text) {
-		logger.Info("Skipping ydotool direct typing fallback for non-ASCII transcript")
-	} else if err := typeLinuxTextWithYdotool(text); err == nil {
-		logger.Info("Typed transcription on Linux using ydotool (%d chars)", utf8.RuneCountInString(text))
-		return
-	} else {
-		logger.Error("Linux auto-type unavailable via ydotool: %v", err)
 	}
 
 	logger.Info("Copied transcription to clipboard; install ydotool with ydotoold/uinput access for automatic paste on GNOME Wayland")
@@ -122,6 +125,7 @@ func linuxYdotoolStatus() map[string]interface{} {
 			"echo 'KERNEL==\"uinput\", SUBSYSTEM==\"misc\", TAG+=\"uaccess\", OPTIONS+=\"static_node=uinput\"' | sudo tee /etc/udev/rules.d/80-uinput.rules",
 			"sudo udevadm control --reload-rules && sudo udevadm trigger",
 			"systemctl --user enable --now ydotool.service",
+			"# Restart your computer, then open WIS Free V3 again.",
 		},
 	}
 

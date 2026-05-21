@@ -54,6 +54,7 @@
                 </div>
                 <p class="hint">GNOME: Settings -> Keyboard -> Custom Shortcuts -> Add a shortcut with the copied command.</p>
                 <p class="hint">KDE: System Settings -> Shortcuts -> Command/URL -> Add a shortcut with the copied command.</p>
+                <p class="hint">After running the ydotool setup commands, restart your computer, then open WIS Free V3 again.</p>
                 <div id="linuxYdotoolStatus" style="display: none; margin-top: 12px; padding: 10px 12px; border-radius: 7px; font-size: 12px; line-height: 1.45;"></div>
             </div>
 
@@ -347,6 +348,12 @@
                 pre.style.color = 'inherit';
                 pre.textContent = status.setup_commands.join('\n');
                 el.appendChild(pre);
+
+                const restart = document.createElement('div');
+                restart.style.marginTop = '8px';
+                restart.style.fontWeight = '600';
+                restart.textContent = 'Restart your computer after setup, then open WIS Free V3 again.';
+                el.appendChild(restart);
             }
         }
 
