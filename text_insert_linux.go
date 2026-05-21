@@ -52,11 +52,11 @@ func (a *App) insertTranscription(text string) {
 
 func (a *App) releaseLinuxInputFocus() {
 	if a.ctx == nil {
-		time.Sleep(150 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 		return
 	}
 	wailsruntime.WindowHide(a.ctx)
-	time.Sleep(250 * time.Millisecond)
+	time.Sleep(150 * time.Millisecond)
 }
 
 func isASCII(text string) bool {

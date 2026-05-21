@@ -202,14 +202,14 @@ func (r *AudioRecorder) Stop() error {
 		return nil
 	}
 
-	// Stop device capture without uninitializing hardware
+	// Stop and release the capture device so Linux privacy indicators turn off
+	// between recordings. The next Start will initialize it again.
 	if r.device != nil {
 		if err := r.device.Stop(); err != nil {
 			logger.Error("Failed to stop audio device: %v", err)
-			// On failure, it might be safer to uninit
-			r.device.Uninit()
-			r.device = nil
 		}
+		r.device.Uninit()
+		r.device = nil
 	}
 
 	// Finalize WAV file
