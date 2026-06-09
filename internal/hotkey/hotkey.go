@@ -49,8 +49,16 @@ func (l *Listener) UpdateShortcut(shortcut string) {
 	l.mu.Lock()
 	l.shortcut = shortcut
 	wasListening := l.isListening
+	doneCh := l.eventLoopDone
+	l.eventLoopDone = nil // prevent stopListeningLocked from waiting on it
 	l.stopListeningLocked()
 	l.mu.Unlock()
+
+	// Wait for the old event loop to fully exit, but WITHOUT holding the
+	// mutex (otherwise the loop can't acquire the lock to signal done).
+	if doneCh != nil {
+		<-doneCh
+	}
 
 	logger.Info("Hotkey updated: shortcut=%s", shortcut)
 
@@ -128,9 +136,16 @@ func (l *Listener) Start() {
 // Stop terminates the hotkey listener.
 func (l *Listener) Stop() {
 	l.mu.Lock()
-	defer l.mu.Unlock()
-
+	doneCh := l.eventLoopDone
+	l.eventLoopDone = nil
 	l.stopListeningLocked()
+	l.mu.Unlock()
+
+	// Wait for the old event loop to fully exit, but WITHOUT holding the
+	// mutex (otherwise the loop can't acquire the lock to signal done).
+	if doneCh != nil {
+		<-doneCh
+	}
 	logger.Info("Hotkey listener stopped")
 }
 
@@ -145,11 +160,8 @@ func (l *Listener) stopListeningLocked() {
 		}
 		l.hk = nil
 	}
-	// Wait for event loop to fully terminate before allowing re-registration
-	if l.eventLoopDone != nil {
-		<-l.eventLoopDone
-		l.eventLoopDone = nil
-	}
+	// Note: we no longer wait on eventLoopDone here — the caller does that
+	// after releasing l.mu, to avoid a self-deadlock.
 	l.isListening = false
 }
 

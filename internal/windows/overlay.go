@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -86,12 +87,13 @@ type Overlay struct {
 	text           string
 	isShowing      bool
 	running        bool
+	closed         int32 // atomic: 1 = Close() has been called
 	mu             sync.RWMutex
 	stopCh         chan struct{}
 	bgBrush        syscall.Handle
 	hFont          syscall.Handle
-	volume         float64 // Current raw volume (0.0 - 1.0)
-	smoothedVolume float64 // Moving average volume for smoother animations
+	volume         uint64 // atomic: float64 stored via math.Float64bits
+	smoothedVolume uint64 // atomic: float64 stored via math.Float64bits
 }
 
 var globalOverlay *Overlay
@@ -131,17 +133,27 @@ func (o *Overlay) Hide() {
 	}
 }
 
-// SetVolume updates the current audio volume level
+// SetVolume updates the current audio volume level using lock-free atomics
+// so the audio callback thread never blocks on a mutex.
 func (o *Overlay) SetVolume(level float64) {
-	o.mu.Lock()
-	o.volume = level
-	// Stronger smoothing: 10% new value, 90% old value to reduce jitter/flicker
-	o.smoothedVolume = (o.smoothedVolume * 0.9) + (level * 0.1)
-	o.mu.Unlock()
+	atomic.StoreUint64(&o.volume, math.Float64bits(level))
+
+	for {
+		oldBits := atomic.LoadUint64(&o.smoothedVolume)
+		old := math.Float64frombits(oldBits)
+		// Stronger smoothing: 10% new value, 90% old value to reduce jitter/flicker
+		smoothed := (old * 0.9) + (level * 0.1)
+		if atomic.CompareAndSwapUint64(&o.smoothedVolume, oldBits, math.Float64bits(smoothed)) {
+			break
+		}
+	}
 }
 
-// Close stops the overlay
+// Close stops the overlay. Safe to call multiple times.
 func (o *Overlay) Close() {
+	if !atomic.CompareAndSwapInt32(&o.closed, 0, 1) {
+		return // Already closed
+	}
 	if o.hwnd != 0 {
 		procPostMessage.Call(uintptr(o.hwnd), WM_CLOSE, 0, 0)
 	}
@@ -256,17 +268,18 @@ func (o *Overlay) run() {
 				procTranslateMessage.Call(uintptr(unsafe.Pointer(&msg)))
 				procDispatchMessage.Call(uintptr(unsafe.Pointer(&msg)))
 			} else {
-				o.mu.RLock()
-				isShowing := o.isShowing
-				o.mu.RUnlock()
+			o.mu.RLock()
+			isShowing := o.isShowing
+			text := o.text
+			o.mu.RUnlock()
 
-				if isShowing {
-					// Higher resolution sleep for smooth animation when visible
-					time.Sleep(2 * time.Millisecond)
-				} else {
-					// Greatly reduce wakeups to save CPU when hidden (app is idle 99% of the time)
-					time.Sleep(50 * time.Millisecond)
-				}
+			if isShowing && (strings.HasPrefix(text, "Recording") || strings.HasPrefix(text, "Transcribing")) {
+				// Higher resolution sleep only when animating
+				time.Sleep(2 * time.Millisecond)
+			} else {
+				// Reduce wakeups when hidden or showing static text (Ready, errors)
+				time.Sleep(50 * time.Millisecond)
+			}
 			}
 		}
 	}
@@ -297,8 +310,9 @@ func overlayWndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uin
 			text = globalOverlay.text
 			bgBrush = globalOverlay.bgBrush
 			hFont = globalOverlay.hFont
-			volume = globalOverlay.smoothedVolume
 			globalOverlay.mu.RUnlock()
+			// Read volume atomically (written by audio thread without lock)
+			volume = math.Float64frombits(atomic.LoadUint64(&globalOverlay.smoothedVolume))
 		}
 
 		// 1. Clear memory DC with background

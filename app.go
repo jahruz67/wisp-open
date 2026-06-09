@@ -117,6 +117,14 @@ func (a *App) startup(ctx context.Context) {
 		}
 	}()
 
+	// Register callback so the tray can notify the frontend when the startup
+	// menu item is toggled directly from the tray icon context menu.
+	tray.SetOnStartupChanged(func(enabled bool) {
+		if a.ctx != nil {
+			wailsruntime.EventsEmit(a.ctx, "startup:changed", enabled)
+		}
+	})
+
 	// Start system tray in a goroutine
 	if runtime.GOOS == "linux" {
 		tray.Start(a)
@@ -233,17 +241,14 @@ func (a *App) StartRecording() {
 		}
 	}
 
-	// 3. Handle secondary tasks in background
-	go func() {
-		// Update tray status
-		tray.UpdateStatus("Recording...")
+	// 3. Update tray status
+	tray.UpdateStatus("Recording...")
 
-		// Pause media if playing (this is slow due to PowerShell)
-		a.wasMediaPlaying = platform.PauseMedia()
-		if a.wasMediaPlaying {
-			logger.Info("Media paused for recording")
-		}
-	}()
+	// Pause media if playing (do synchronously so wasMediaPlaying is ready before Stop)
+	a.wasMediaPlaying = platform.PauseMedia()
+	if a.wasMediaPlaying {
+		logger.Info("Media paused for recording")
+	}
 }
 
 // StopRecording stops the audio recording and triggers transcription
@@ -267,8 +272,6 @@ func (a *App) StopRecording() {
 	err := a.audioRecorder.Stop()
 	if err != nil {
 		logger.Error("Failed to stop recording: %v", err)
-		// Attempt to keep state consistent: if stop failed, we are likely still recording.
-		atomic.StoreInt32(&a.recording, 1)
 		return
 	}
 
@@ -348,7 +351,7 @@ func (a *App) processRecording(recordingPath string) {
 		return
 	}
 
-	logger.Info("Transcribed: %s", text)
+	logger.Info("Transcribed %d characters", len(text))
 
 	activeWindow := robotgo.GetTitle()
 	logger.Info("Active window for context: %s", activeWindow)
@@ -362,7 +365,7 @@ func (a *App) processRecording(recordingPath string) {
 		refinedText = text
 	} else {
 		refineDuration := time.Since(startRefine)
-		logger.Info("AI Refinement completed in %v (Refined: %s)", refineDuration, refinedText)
+		logger.Info("AI Refinement completed in %v (%d chars)", refineDuration, len(refinedText))
 	}
 
 	// Save to history
@@ -476,7 +479,10 @@ func (a *App) SaveSettings(settings map[string]interface{}) string {
 	}
 
 	// Save to file
-	config.Save(a.config, "")
+	if err := config.Save(a.config, ""); err != nil {
+		logger.Error("Failed to save config: %v", err)
+		return fmt.Sprintf("Error saving settings: %v", err)
+	}
 
 	// Re-init transcriber with new settings
 	a.transcriber = transcriber.NewClient(
@@ -529,6 +535,10 @@ func (a *App) ToggleStartup(enable bool) string {
 		logger.Error("Startup toggle error: %v", err)
 		return fmt.Sprintf("Error: %v", err)
 	}
+
+	// Keep the tray menu item in sync when changed from the settings UI
+	tray.SetStartupChecked(enable)
+
 	return "Success"
 }
 

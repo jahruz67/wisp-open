@@ -433,7 +433,9 @@ func downloadFile(url, dest string, progress chan<- DownloadProgress) error {
 	for {
 		n, err := resp.Body.Read(buf)
 		if n > 0 {
-			out.Write(buf[:n])
+			if _, werr := out.Write(buf[:n]); werr != nil {
+				return werr
+			}
 			downloaded += int64(n)
 			if progress != nil && total > 0 {
 				progress <- DownloadProgress{

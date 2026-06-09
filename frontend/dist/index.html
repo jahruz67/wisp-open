@@ -6,7 +6,7 @@
     <meta content="width=device-width, initial-scale=1.0" name="viewport">
     <title>Wisp Settings</title>
     
-  <script type="module" crossorigin src="/assets/index.839c3199.js"></script>
+  <script type="module" crossorigin src="/assets/index.bbf41643.js"></script>
   <link rel="stylesheet" href="/assets/index.6e77aa4d.css">
 </head>
 
@@ -38,7 +38,21 @@
                         <button onclick="saveApiKey()">Save</button>
                     </div>
                 </div>
-                <p class="hint">Get your free key at <a href="https://console.groq.com/keys" target="_blank" style="color: var(--accent);">console.groq.com/keys</a></p>
+                <p class="hint">Get your free key at <a href="#" onclick="window.runtime.BrowserOpenURL('https://console.groq.com/keys'); return false;" style="color: var(--accent);">console.groq.com/keys</a></p>
+            </div>
+
+            <!-- Global Hotkey -->
+            <div class="section" id="shortcutSection">
+                <label>Global Hotkey</label>
+                <div class="form-control">
+                    <div class="flex-row">
+                        <div class="input-wrapper">
+                            <input type="text" id="shortcutInput" readonly placeholder="Click Record then press a key combo">
+                        </div>
+                        <button id="recordBtn" onclick="recordShortcut()">Record</button>
+                    </div>
+                </div>
+                <p class="hint">Press the key combination you want to use to start/stop recording (e.g. alt+z, ctrl+shift+space). Modifier-only combos like ctrl+alt are also supported on Windows.</p>
             </div>
 
             <div class="section-group-label">Input</div>

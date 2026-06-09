@@ -41,6 +41,7 @@ type AudioRecorder struct {
 	outputFile   *os.File
 	dataSize     uint32
 	isRecording  bool
+	writing      int32 // atomic: 1 = safe to write to outputFile, 0 = no longer writing
 	deviceID     *string
 	OnVolume     VolumeCallback
 	mu           sync.Mutex
@@ -188,6 +189,7 @@ func (r *AudioRecorder) Start(filename string) error {
 	}
 
 	r.isRecording = true
+	atomic.StoreInt32(&r.writing, 1)
 	logger.Info("Recording started: %s", filename)
 	return nil
 }
@@ -200,6 +202,10 @@ func (r *AudioRecorder) Stop() error {
 	if !r.isRecording {
 		return nil
 	}
+
+	// Mark writing as unsafe BEFORE stopping device to prevent in-flight
+	// callbacks from writing to a closed file.
+	atomic.StoreInt32(&r.writing, 0)
 
 	// Stop the capture device. We keep the device initialized between recordings
 	// to avoid the expensive re-initialization cycle. ALSA privacy indicators
@@ -256,15 +262,21 @@ func (r *AudioRecorder) Cleanup() {
 }
 
 // onAudioData is called by miniaudio when audio data is available.
+// Safe to call without r.mu because atomic writing flag prevents writes
+// after Stop() clears the flag.
 func (r *AudioRecorder) onAudioData(_, inputSamples []byte, _ uint32) {
-	if r.outputFile != nil && len(inputSamples) > 0 {
-		n, _ := r.outputFile.Write(inputSamples)
-		atomic.AddUint32(&r.dataSize, uint32(n))
+	if atomic.LoadInt32(&r.writing) == 0 || r.outputFile == nil || len(inputSamples) == 0 {
+		return
+	}
 
-		// Calculate volume if callback is set
-		if r.OnVolume != nil {
-			r.calculateVolume(inputSamples[:n])
-		}
+	n, err := r.outputFile.Write(inputSamples)
+	if err == nil {
+		atomic.AddUint32(&r.dataSize, uint32(n))
+	}
+
+	// Calculate volume if callback is set (uses atomic-read-only fields)
+	if r.OnVolume != nil {
+		r.calculateVolume(inputSamples[:n])
 	}
 }
 
@@ -307,23 +319,45 @@ func (r *AudioRecorder) writeWAVHeader(dataSize uint32) error {
 	blockAlign := numChannels * (bitsPerSample / 8)
 
 	// RIFF chunk
-	r.outputFile.Write([]byte("RIFF"))
-	binary.Write(r.outputFile, binary.LittleEndian, uint32(36+dataSize))
-	r.outputFile.Write([]byte("WAVE"))
+	if _, err := r.outputFile.Write([]byte("RIFF")); err != nil {
+		return err
+	}
+	if err := binary.Write(r.outputFile, binary.LittleEndian, uint32(36+dataSize)); err != nil {
+		return err
+	}
+	if _, err := r.outputFile.Write([]byte("WAVE")); err != nil {
+		return err
+	}
 
 	// fmt sub-chunk
-	r.outputFile.Write([]byte("fmt "))
-	binary.Write(r.outputFile, binary.LittleEndian, uint32(16)) // Subchunk1Size
-	binary.Write(r.outputFile, binary.LittleEndian, uint16(1))  // AudioFormat (PCM)
-	binary.Write(r.outputFile, binary.LittleEndian, numChannels)
-	binary.Write(r.outputFile, binary.LittleEndian, sampleRate)
-	binary.Write(r.outputFile, binary.LittleEndian, byteRate)
-	binary.Write(r.outputFile, binary.LittleEndian, blockAlign)
-	binary.Write(r.outputFile, binary.LittleEndian, bitsPerSample)
+	if _, err := r.outputFile.Write([]byte("fmt ")); err != nil {
+		return err
+	}
+	if err := binary.Write(r.outputFile, binary.LittleEndian, uint32(16)); err != nil {
+		return err
+	}
+	if err := binary.Write(r.outputFile, binary.LittleEndian, uint16(1)); err != nil {
+		return err
+	}
+	if err := binary.Write(r.outputFile, binary.LittleEndian, numChannels); err != nil {
+		return err
+	}
+	if err := binary.Write(r.outputFile, binary.LittleEndian, sampleRate); err != nil {
+		return err
+	}
+	if err := binary.Write(r.outputFile, binary.LittleEndian, byteRate); err != nil {
+		return err
+	}
+	if err := binary.Write(r.outputFile, binary.LittleEndian, blockAlign); err != nil {
+		return err
+	}
+	if err := binary.Write(r.outputFile, binary.LittleEndian, bitsPerSample); err != nil {
+		return err
+	}
 
 	// data sub-chunk
-	r.outputFile.Write([]byte("data"))
-	binary.Write(r.outputFile, binary.LittleEndian, dataSize)
-
-	return nil
+	if _, err := r.outputFile.Write([]byte("data")); err != nil {
+		return err
+	}
+	return binary.Write(r.outputFile, binary.LittleEndian, dataSize)
 }

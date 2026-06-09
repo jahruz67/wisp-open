@@ -147,19 +147,35 @@ func (c *Config) applyDefaults() {
 	}
 }
 
-// AddHistoryItem adds a new transcription to the history, enforcing a maximum limit.
+// AddHistoryItem adds a new transcription to the history, enforcing limits on
+// both the item count and the total byte size of the history payload.
 func (c *Config) AddHistoryItem(text, timestamp string) {
 	newItem := HistoryItem{
 		Text:      text,
 		Timestamp: timestamp,
 	}
 
-	// Prepend to history so the newest items are at the top
+	// Bounded item count: keep only the most recent items.
+	if len(c.History) >= MaxHistoryItems {
+		c.History = c.History[:MaxHistoryItems-1]
+	}
+
+	// Prepend to history so the newest items are at the top.
 	c.History = append([]HistoryItem{newItem}, c.History...)
 
-	// Bounded history: keep only the most recent items
-	if len(c.History) > MaxHistoryItems {
-		c.History = c.History[:MaxHistoryItems]
+	// Bounded total size: drop oldest items until under the byte cap.
+	const maxHistoryBytes = 256 * 1024 // 256 KB upper bound on history payload
+	total := 0
+	cutoff := 0
+	for i, item := range c.History {
+		total += len(item.Text) + len(item.Timestamp) + 32 // rough JSON overhead per item
+		if total > maxHistoryBytes {
+			cutoff = i + 1
+			break
+		}
+	}
+	if cutoff > 0 {
+		c.History = c.History[cutoff:]
 	}
 }
 

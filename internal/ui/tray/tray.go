@@ -10,7 +10,6 @@ import (
 	"image"
 	"image/color"
 	"image/png"
-	"os"
 	"runtime"
 	"strings"
 	"sync"
@@ -50,6 +49,11 @@ var statusMenuItem *systray.MenuItem
 var triggerCountItem *systray.MenuItem
 var triggerCount int
 var iconsInitOnce sync.Once
+var startupMenuItem *systray.MenuItem
+
+// onStartupChanged is called when the tray startup menu item is toggled.
+// It receives the new enabled state. The callback is set by the app layer.
+var onStartupChanged func(bool)
 
 func appDisplayName(app App) string {
 	v := app.Version()
@@ -91,6 +95,9 @@ func onReady(app App) {
 
 	menuExit := systray.AddMenuItem("Exit", "Close the application")
 
+	// Store reference for external updates
+	startupMenuItem = menuStartup
+
 	// Handle menu events in background
 	go handleMenuEvents(app, menuSettings, menuStartup, menuExit)
 }
@@ -119,6 +126,7 @@ func toggleStartup(item *systray.MenuItem) {
 		} else {
 			item.Uncheck()
 			logger.Info("Removed from system startup")
+			notifyStartupChanged(false)
 		}
 	} else {
 		if err := platform.AddToStartup(); err != nil {
@@ -126,16 +134,45 @@ func toggleStartup(item *systray.MenuItem) {
 		} else {
 			item.Check()
 			logger.Info("Added to system startup")
+			notifyStartupChanged(true)
 		}
 	}
 }
 
+// notifyStartupChanged calls the onStartupChanged callback if set.
+func notifyStartupChanged(enabled bool) {
+	if onStartupChanged != nil {
+		onStartupChanged(enabled)
+	}
+}
+
+// SetOnStartupChanged registers a callback that is invoked when the tray
+// startup menu item is toggled. The callback receives the new enabled state.
+func SetOnStartupChanged(fn func(bool)) {
+	onStartupChanged = fn
+}
+
+// SetStartupChecked updates the tray startup menu item checkbox state.
+// This is used to keep the tray in sync when the startup option is changed
+// from the settings UI.
+func SetStartupChecked(checked bool) {
+	if startupMenuItem == nil {
+		return
+	}
+	if checked {
+		startupMenuItem.Check()
+	} else {
+		startupMenuItem.Uncheck()
+	}
+}
+
 // handleExit cleanly shuts down the application.
+// Calls app.Quit() and lets wails run deferred shutdown handlers instead of
+// os.Exit(0) which would skip instance-lock / socket cleanup in main().
 func handleExit(app App) {
 	logger.Info("User requested application exit")
-	app.Quit()
 	systray.Quit()
-	os.Exit(0)
+	app.Quit()
 }
 
 // buildTooltip creates the tray icon tooltip text.

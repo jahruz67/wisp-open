@@ -123,16 +123,22 @@ func (c *Client) RefineText(text string, activeContext string) (string, error) {
 	if c.apiKey == "" || c.aiModel == "None" {
 		return text, nil
 	}
-	_ = activeContext
 
 	systemPrompt := c.aiPrompt
 	systemPrompt += "\n\nSafety check: the output must remain the same transcript. If you are unsure, return the input unchanged."
+
+	// Fold the active window context into the user message to give the LLM
+	// situational awareness without changing the cleanup system prompt.
+	userContent := text
+	if activeContext != "" {
+		userContent = "[" + activeContext + "]\n" + text
+	}
 
 	payload := map[string]interface{}{
 		"model": c.aiModel,
 		"messages": []map[string]string{
 			{"role": "system", "content": systemPrompt},
-			{"role": "user", "content": text},
+			{"role": "user", "content": userContent},
 		},
 		"temperature": RefinementTemp,
 	}
@@ -318,8 +324,14 @@ func (c *Client) prepareAudioRequest(audioFilePath, language string) (*bytes.Buf
 }
 
 // handleAPIError logs and formats API error responses.
+// Truncates the body to avoid leaking secrets if the API echoes request data.
 func (c *Client) handleAPIError(resp *http.Response, operation string) error {
 	bodyBytes, _ := io.ReadAll(resp.Body)
-	logger.Error("API %s error: status=%d body=%s", operation, resp.StatusCode, string(bodyBytes))
+	const maxLogLen = 200
+	bodyStr := string(bodyBytes)
+	if len(bodyStr) > maxLogLen {
+		bodyStr = bodyStr[:maxLogLen] + "...(truncated)"
+	}
+	logger.Error("API %s error: status=%d body=%s", operation, resp.StatusCode, bodyStr)
 	return fmt.Errorf("%s failed with status %d", operation, resp.StatusCode)
 }
