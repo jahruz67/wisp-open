@@ -80,9 +80,15 @@ if ! pkg-config --exists gtk+-3.0 || ! webkit2_ok || ! pkg-config --exists alsa 
     echo ""
     echo "Ubuntu/Debian:"
     echo "  sudo apt update && sudo apt install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.0-dev libasound2-dev libayatana-appindicator3-dev dpkg-dev rpm"
+    echo "  sudo apt install -y ydotool  (recommended for automatic text injection)"
     echo ""
     echo "Fedora:"
     echo "  sudo dnf install -y gcc gcc-c++ make pkgconf-pkg-config gtk3-devel webkit2gtk4.1-devel alsa-lib-devel libayatana-appindicator-gtk3-devel rpm-build"
+    echo "  sudo dnf install -y ydotool  (recommended for automatic text injection)"
+    echo ""
+    echo "Arch Linux:"
+    echo "  sudo pacman -S base-devel pkgconf gtk3 webkit2gtk alsa-lib libayatana-appindicator"
+    echo "  sudo pacman -S ydotool  (recommended for automatic text injection)"
     echo ""
     exit 1
 fi
@@ -185,8 +191,10 @@ Architecture: $ARCH_DEB
 Maintainer: $MAINTAINER
 Installed-Size: $INSTALLED_SIZE
 Depends: libgtk-3-0, libwebkit2gtk-4.0-37 | libwebkit2gtk-4.1-0, libasound2, libayatana-appindicator3-1
+Recommends: ydotool
 Description: $COMMENT
  WIS Free V3 is a desktop voice dictation app built with Go and Wails.
+ On Wayland, install ydotool for automatic text injection.
 EOF
 
 dpkg-deb --build "$DEB_ROOT" "$DIST_DIR/${APP_NAME}_${PKG_VERSION}-${PKG_RELEASE}_${ARCH_DEB}.deb"
@@ -206,9 +214,11 @@ Summary:        $COMMENT
 License:        $LICENSE
 Requires:       gtk3
 Requires:       alsa-lib
+Requires:       libayatana-appindicator-gtk3
 
 %description
 WIS Free V3 is a desktop voice dictation app built with Go and Wails.
+On Wayland, install ydotool for automatic text injection.
 
 %install
 rm -rf %{buildroot}

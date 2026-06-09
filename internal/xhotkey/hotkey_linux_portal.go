@@ -338,6 +338,36 @@ func (hk *Hotkey) registerPortal() error {
 	return nil
 }
 
+// safeSendKeydown sends a keydown event to the hotkey channel, recovering from panic
+// if the channel has been closed (e.g. during hotkey re-registration).
+func (hk *Hotkey) safeSendKeydown() {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Debug("safeSendKeydown: recovered from panic: %v", r)
+		}
+	}()
+	select {
+	case hk.keydownIn <- Event{}:
+	default:
+		// Channel buffer is full or closed; skip.
+	}
+}
+
+// safeSendKeyup sends a keyup event to the hotkey channel, recovering from panic
+// if the channel has been closed (e.g. during hotkey re-registration).
+func (hk *Hotkey) safeSendKeyup() {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Debug("safeSendKeyup: recovered from panic: %v", r)
+		}
+	}()
+	select {
+	case hk.keyupIn <- Event{}:
+	default:
+		// Channel buffer is full or closed; skip.
+	}
+}
+
 func (hk *Hotkey) portalSignalLoop() {
 	defer close(hk.portalDone)
 
@@ -388,15 +418,15 @@ func (hk *Hotkey) portalSignalLoop() {
 
 			switch sig.Name {
 			case ifaceGlobalShortcuts + ".Activated":
-				go func() { hk.keydownIn <- Event{} }()
+				hk.safeSendKeydown()
 			case ifaceGlobalShortcuts + ".Deactivated":
-				go func() { hk.keyupIn <- Event{} }()
+				hk.safeSendKeyup()
 			default:
 				// Fallback for different bus routing names just in case
 				if strings.HasSuffix(sig.Name, ".Activated") {
-					go func() { hk.keydownIn <- Event{} }()
+					hk.safeSendKeydown()
 				} else if strings.HasSuffix(sig.Name, ".Deactivated") {
-					go func() { hk.keyupIn <- Event{} }()
+					hk.safeSendKeyup()
 				}
 			}
 		}

@@ -21,6 +21,7 @@ type Listener struct {
 	hk                        *xhk.Hotkey
 	stopModPoll               chan struct{}
 	mu                        sync.RWMutex
+	eventLoopDone             chan struct{}
 }
 
 // NewListener creates a new hotkey listener with the specified shortcut and callbacks.
@@ -144,11 +145,22 @@ func (l *Listener) stopListeningLocked() {
 		}
 		l.hk = nil
 	}
+	// Wait for event loop to fully terminate before allowing re-registration
+	if l.eventLoopDone != nil {
+		<-l.eventLoopDone
+		l.eventLoopDone = nil
+	}
 	l.isListening = false
 }
 
 // eventLoop runs the main keyboard event processing loop.
 func (l *Listener) eventLoop(hk *xhk.Hotkey) {
+	done := make(chan struct{})
+	l.mu.Lock()
+	l.eventLoopDone = done
+	l.mu.Unlock()
+	defer close(done)
+
 	var isRecording bool
 
 	for {
@@ -159,7 +171,7 @@ func (l *Listener) eventLoop(hk *xhk.Hotkey) {
 			}
 			if !isRecording {
 				logger.Info("Shortcut activated: starting recording")
-				go l.startCallback()
+				l.startCallback()
 				isRecording = true
 			} else {
 				// We received a second Keydown while already recording.
@@ -171,9 +183,9 @@ func (l *Listener) eventLoop(hk *xhk.Hotkey) {
 					// Genuine second press. Toggle off.
 					logger.Info("Shortcut activated again: toggling recording (Wayland toggle fallback)")
 					if l.stopCallback != nil {
-						go l.stopCallback()
+						l.stopCallback()
 					} else {
-						go l.startCallback()
+						l.startCallback()
 					}
 					isRecording = false
 				}
@@ -196,7 +208,7 @@ func (l *Listener) eventLoop(hk *xhk.Hotkey) {
 				case <-time.After(50 * time.Millisecond):
 					// Key was genuinely physically released
 					logger.Info("Shortcut released: stopping recording")
-					go l.stopCallback()
+					l.stopCallback()
 					isRecording = false
 				}
 			}

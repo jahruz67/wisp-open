@@ -9,7 +9,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"math"
 	"unsafe"
 	"wis-free-v3/internal/logger"
 
@@ -202,14 +201,16 @@ func (r *AudioRecorder) Stop() error {
 		return nil
 	}
 
-	// Stop and release the capture device so Linux privacy indicators turn off
-	// between recordings. The next Start will initialize it again.
+	// Stop the capture device. We keep the device initialized between recordings
+	// to avoid the expensive re-initialization cycle. ALSA privacy indicators
+	// will still turn off because we've stopped the stream.
 	if r.device != nil {
 		if err := r.device.Stop(); err != nil {
 			logger.Error("Failed to stop audio device: %v", err)
 		}
-		r.device.Uninit()
-		r.device = nil
+		// Do NOT Uninit the device between recordings. Keeping it alive
+		// avoids expensive ALSA device re-probe and reduces CPU spikes.
+		// The device will be fully cleaned up in Cleanup().
 	}
 
 	// Finalize WAV file
@@ -262,23 +263,38 @@ func (r *AudioRecorder) onAudioData(_, inputSamples []byte, _ uint32) {
 
 		// Calculate volume if callback is set
 		if r.OnVolume != nil {
-			// S16LE: 2 bytes per sample
-			samples := len(inputSamples) / 2
-			var maxAmplitude float64
-			for i := 0; i < samples; i++ {
-				// Read as int16
-				val := int16(binary.LittleEndian.Uint16(inputSamples[i*2 : i*2+2]))
-				absVal := math.Abs(float64(val))
-				if absVal > maxAmplitude {
-					maxAmplitude = absVal
-				}
-			}
-
-			// Normalize to 0.0 - 1.0 (max for int16 is 32767)
-			level := maxAmplitude / 32767.0
-			r.OnVolume(level)
+			r.calculateVolume(inputSamples[:n])
 		}
 	}
+}
+
+// calculateVolume processes audio samples to compute the current volume level.
+// Extracted to avoid allocations in the hot audio callback path.
+func (r *AudioRecorder) calculateVolume(samples []byte) {
+	// S16LE: 2 bytes per sample
+	sampleCount := len(samples) / 2
+	if sampleCount == 0 {
+		return
+	}
+
+	var maxAmplitude float64
+	// Use direct slice indexing to avoid per-sample allocations
+	for i := 0; i < sampleCount; i++ {
+		offset := i * 2
+		// Read as int16 via inlined LittleEndian to avoid function call overhead
+		val := int16(samples[offset]) | int16(samples[offset+1])<<8
+		absVal := float64(val)
+		if absVal < 0 {
+			absVal = -absVal
+		}
+		if absVal > maxAmplitude {
+			maxAmplitude = absVal
+		}
+	}
+
+	// Normalize to 0.0 - 1.0 (max for int16 is 32767)
+	level := maxAmplitude / 32767.0
+	r.OnVolume(level)
 }
 
 // writeWAVHeader writes a standard RIFF WAV header to the output file.

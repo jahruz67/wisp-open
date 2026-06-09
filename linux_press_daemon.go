@@ -11,21 +11,26 @@ import (
 
 const linuxPressAddr = "127.0.0.1:9876"
 
-var (
-	linuxPressMu            sync.Mutex
-	linuxPressReleaseTimer  *time.Timer
-	linuxPressDetectTimer   *time.Timer
-	linuxPressRecording     bool
-	linuxPressHoldMode      bool
-	linuxPressDetectingHold bool
-)
+// linuxPressState holds the daemon's state, protected by a mutex.
+// All field access must be done while holding the mutex.
+type linuxPressState struct {
+	mu               sync.Mutex
+	releaseTimer     *time.Timer
+	detectTimer      *time.Timer
+	recording        bool
+	holdMode         bool
+	detectingHold    bool
+}
+
+var pressState linuxPressState
 
 const (
-	// GNOME custom shortcuts commonly auto-repeat while the key is held.
-	// If we see a second ping quickly, treat the shortcut as push-to-talk.
+	// linuxPressHoldDetectWindow is the window in which a second ping indicates
+	// the shortcut is being held (push-to-talk mode).
 	linuxPressHoldDetectWindow = 1200 * time.Millisecond
 
-	// Once hold mode is confirmed, lack of fresh pings means the key was released.
+	// linuxPressReleaseGrace is how long after the last ping to wait before
+	// stopping recording in hold mode.
 	linuxPressReleaseGrace = 450 * time.Millisecond
 )
 
@@ -63,41 +68,7 @@ func sendLinuxPressPing() error {
 func (a *App) startLinuxPressDaemon() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/press", func(w http.ResponseWriter, r *http.Request) {
-		linuxPressMu.Lock()
-		defer linuxPressMu.Unlock()
-
-		if !linuxPressRecording {
-			linuxPressRecording = true
-			linuxPressHoldMode = false
-			linuxPressDetectingHold = true
-			go a.StartRecording()
-
-			if linuxPressDetectTimer != nil {
-				linuxPressDetectTimer.Stop()
-			}
-			linuxPressDetectTimer = time.AfterFunc(linuxPressHoldDetectWindow, func() {
-				linuxPressMu.Lock()
-				defer linuxPressMu.Unlock()
-				linuxPressDetectingHold = false
-			})
-
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-
-		if linuxPressDetectingHold || linuxPressHoldMode {
-			linuxPressHoldMode = true
-			linuxPressDetectingHold = false
-			if linuxPressDetectTimer != nil {
-				linuxPressDetectTimer.Stop()
-				linuxPressDetectTimer = nil
-			}
-			resetLinuxPressReleaseTimer(a)
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-
-		stopLinuxPressRecording(a)
+		a.handleLinuxPressPing()
 		w.WriteHeader(http.StatusNoContent)
 	})
 
@@ -106,33 +77,73 @@ func (a *App) startLinuxPressDaemon() {
 	}()
 }
 
-func resetLinuxPressReleaseTimer(a *App) {
-	if linuxPressReleaseTimer != nil {
-		linuxPressReleaseTimer.Stop()
+func (a *App) handleLinuxPressPing() {
+	pressState.mu.Lock()
+	defer pressState.mu.Unlock()
+
+	if !pressState.recording {
+		// First ping: start recording with hold detection
+		pressState.recording = true
+		pressState.holdMode = false
+		pressState.detectingHold = true
+		go a.StartRecording()
+
+		if pressState.detectTimer != nil {
+			pressState.detectTimer.Stop()
+		}
+		pressState.detectTimer = time.AfterFunc(linuxPressHoldDetectWindow, func() {
+			pressState.mu.Lock()
+			defer pressState.mu.Unlock()
+			pressState.detectingHold = false
+		})
+		return
 	}
 
-	linuxPressReleaseTimer = time.AfterFunc(linuxPressReleaseGrace, func() {
-		linuxPressMu.Lock()
-		defer linuxPressMu.Unlock()
-		if linuxPressRecording && linuxPressHoldMode {
-			stopLinuxPressRecording(a)
+	// Already recording. If we're still in the hold-detect window or confirmed hold mode,
+	// this is a hold-mode keepalive ping (key auto-repeat).
+	if pressState.detectingHold || pressState.holdMode {
+		pressState.holdMode = true
+		pressState.detectingHold = false
+		if pressState.detectTimer != nil {
+			pressState.detectTimer.Stop()
+			pressState.detectTimer = nil
+		}
+		a.resetLinuxPressReleaseTimerLocked()
+		return
+	}
+
+	// Already recording but not in hold mode: this is a toggle-off ping (second press).
+	a.stopLinuxPressRecordingLocked()
+}
+
+func (a *App) resetLinuxPressReleaseTimerLocked() {
+	if pressState.releaseTimer != nil {
+		pressState.releaseTimer.Stop()
+	}
+
+	pressState.releaseTimer = time.AfterFunc(linuxPressReleaseGrace, func() {
+		pressState.mu.Lock()
+		defer pressState.mu.Unlock()
+		if pressState.recording && pressState.holdMode {
+			a.stopLinuxPressRecordingLocked()
 		}
 	})
 }
 
-func stopLinuxPressRecording(a *App) {
-	if linuxPressReleaseTimer != nil {
-		linuxPressReleaseTimer.Stop()
-		linuxPressReleaseTimer = nil
+func (a *App) stopLinuxPressRecordingLocked() {
+	// Caller must hold pressState.mu
+	if pressState.releaseTimer != nil {
+		pressState.releaseTimer.Stop()
+		pressState.releaseTimer = nil
 	}
-	if linuxPressDetectTimer != nil {
-		linuxPressDetectTimer.Stop()
-		linuxPressDetectTimer = nil
+	if pressState.detectTimer != nil {
+		pressState.detectTimer.Stop()
+		pressState.detectTimer = nil
 	}
-	if linuxPressRecording {
-		linuxPressRecording = false
-		linuxPressHoldMode = false
-		linuxPressDetectingHold = false
+	if pressState.recording {
+		pressState.recording = false
+		pressState.holdMode = false
+		pressState.detectingHold = false
 		go a.StopRecording()
 	}
 }

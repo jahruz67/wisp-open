@@ -76,6 +76,11 @@ func Error(format string, args ...interface{}) {
 	log("ERROR", format, args...)
 }
 
+// Debug logs a debug message with timestamp.
+func Debug(format string, args ...interface{}) {
+	log("DEBUG", format, args...)
+}
+
 // log writes a formatted log message to the log file and console.
 func log(level, format string, args ...interface{}) {
 	logMutex.Lock()
@@ -103,7 +108,9 @@ func log(level, format string, args ...interface{}) {
 
 	if logFile != nil {
 		logFile.WriteString(logLine)
-		logFile.Sync()
+		// Do NOT call Sync() on every write — that's a massive performance
+		// bottleneck (forces fsync to disk for every single log line).
+		// The kernel will flush buffered writes in its own time.
 	}
 }
 
