@@ -87,6 +87,8 @@ func main() {
 		OnBeforeClose:    app.beforeClose,
 		StartHidden:      true,
 		Bind:             []interface{}{app},
+		// PLATFORM NOTE: Linux-specific Wails options (sets the program name
+		// for desktop integration). These options are only applied on Linux.
 		Linux: &linux.Options{
 			ProgramName: "wis-free-v3",
 		},

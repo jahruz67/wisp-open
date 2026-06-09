@@ -1,4 +1,11 @@
 //go:build linux
+
+// ============================================================
+// LINUX-ONLY FILE — Linux process management utilities.
+// Uses syscall.Kill(pid, 0) to check if a process is running.
+// The Windows equivalent is in internal/windows/process.go
+// ============================================================
+
 package linux
 
 import "syscall"

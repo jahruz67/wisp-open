@@ -1,4 +1,12 @@
 //go:build windows
+
+// ============================================================
+// WINDOWS-ONLY FILE — Windows process management utilities.
+// Uses Win32 API (OpenProcess, GetExitCodeProcess) to check
+// if a process is running. The Linux equivalent for process
+// checking is in internal/linux/process.go
+// ============================================================
+
 package windows
 
 import (

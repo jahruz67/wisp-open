@@ -1,4 +1,12 @@
 //go:build windows
+
+// ============================================================
+// WINDOWS-ONLY FILE — Windows startup (autostart) management
+// via the Windows Registry (HKCU\Software\Microsoft\Windows\
+// CurrentVersion\Run). The Linux equivalent for autostart
+// management is internal/linux/startup.go (XDG .desktop files)
+// ============================================================
+
 package windows
 
 import (

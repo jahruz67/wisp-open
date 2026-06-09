@@ -1,5 +1,12 @@
 //go:build !linux
 
+// ============================================================
+// WINDOWS-ONLY FILE — Tray startup for Windows (and macOS).
+// Uses systray.Run which blocks and runs the Win32 message pump.
+// The Linux equivalent is tray_start_linux.go which uses
+// systray.Register to integrate with the existing GTK loop.
+// ============================================================
+
 package tray
 
 import (

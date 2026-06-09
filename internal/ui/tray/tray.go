@@ -279,52 +279,55 @@ func initDynamicIcons() {
 }
 
 func createMicPNG(c color.Color) []byte {
-	img := image.NewRGBA(image.Rect(0, 0, 64, 64))
+	const S = 128 // canvas size
+	img := image.NewRGBA(image.Rect(0, 0, S, S))
 	// All pixels are transparent by default (new RGBA starts with 0 alpha).
 
+	cx, cy := S/2, S/2 // center (64, 50)
+
 	// Let's draw the microphone parts
-	for y := 0; y < 64; y++ {
-		for x := 0; x < 64; x++ {
+	for y := 0; y < S; y++ {
+		for x := 0; x < S; x++ {
 			drawPixel := false
 
 			// 1. Capsule Body (Rounded Rectangle)
-			// Capsule center is X=32, Y=25. Width=14 (radius 7), height of straight part = 10 (Y from 20 to 30)
-			if x >= 25 && x <= 39 && y >= 20 && y <= 30 {
+			// Capsule center is X=64, Y=50. Width=28 (radius 14), height of straight part = 20 (Y from 40 to 60)
+			if x >= 50 && x <= 78 && y >= 40 && y <= 60 {
 				drawPixel = true
-			} else if y < 20 {
-				// Top cap: center (32, 20), radius 7
-				dx := float64(x - 32)
-				dy := float64(y - 20)
-				if dx*dx+dy*dy <= 49 { // 7^2
+			} else if y < 40 {
+				// Top cap: center (64, 40), radius 14
+				dx := float64(x - cx)
+				dy := float64(y - 40)
+				if dx*dx+dy*dy <= 196 { // 14^2
 					drawPixel = true
 				}
-			} else if y > 30 && y <= 37 {
-				// Bottom cap: center (32, 30), radius 7
-				dx := float64(x - 32)
-				dy := float64(y - 30)
-				if dx*dx+dy*dy <= 49 {
+			} else if y > 60 && y <= 74 {
+				// Bottom cap: center (64, 60), radius 14
+				dx := float64(x - cx)
+				dy := float64(y - 60)
+				if dx*dx+dy*dy <= 196 {
 					drawPixel = true
 				}
 			}
 
 			// 2. U-stand
-			// Center of U-stand circle is (32, 25).
-			// Outer radius = 15, inner radius = 12 (thickness 3)
-			// Only draw for Y >= 25 and Y <= 40
-			dx := float64(x - 32)
-			dy := float64(y - 25)
+			// Center of U-stand circle is (64, 50).
+			// Outer radius = 30, inner radius = 24 (thickness 6)
+			// Only draw for Y >= 50 and Y <= 80
+			dx := float64(x - cx)
+			dy := float64(y - cy)
 			distSq := dx*dx + dy*dy
-			if y >= 25 && y <= 40 && distSq >= 144 && distSq <= 225 { // 12^2 to 15^2
+			if y >= 50 && y <= 80 && distSq >= 576 && distSq <= 900 { // 24^2 to 30^2
 				drawPixel = true
 			}
 
-			// 3. Stem (Vertical line from Y=40 to 50, X=31 to 33)
-			if x >= 31 && x <= 33 && y >= 40 && y <= 50 {
+			// 3. Stem (Vertical line from Y=80 to 100, X=62 to 66)
+			if x >= 62 && x <= 66 && y >= 80 && y <= 100 {
 				drawPixel = true
 			}
 
-			// 4. Base (Horizontal line at Y=50 to 52, X=20 to 44)
-			if x >= 20 && x <= 44 && y >= 50 && y <= 52 {
+			// 4. Base (Horizontal line at Y=100 to 104, X=40 to 88)
+			if x >= 40 && x <= 88 && y >= 100 && y <= 104 {
 				drawPixel = true
 			}
 

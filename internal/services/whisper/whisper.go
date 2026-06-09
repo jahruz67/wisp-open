@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -115,7 +116,13 @@ func (m *Manager) Install(model string) error {
 		return fmt.Errorf("failed to create install directory: %w", err)
 	}
 
-	// Create install script
+	if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
+		// On Linux/macOS, the automatic installer is not available.
+		// Users should install whisper.cpp from their package manager or build from source.
+		return fmt.Errorf("automatic whisper installation is not available on %s; install whisper.cpp from your package manager (e.g. 'sudo apt install whisper-cpp' or 'brew install whisper-cpp') or build from source at https://github.com/ggerganov/whisper.cpp, then place the binary and model in %s", runtime.GOOS, m.installDir)
+	}
+
+	// Create install script (Windows batch file)
 	scriptPath := filepath.Join(m.installDir, "install.bat")
 	script := m.generateInstallScript(model)
 	if err := os.WriteFile(scriptPath, []byte(script), 0755); err != nil {
@@ -363,11 +370,18 @@ func (m *Manager) getBinaryPath() string {
 	// whisper.cpp extracts to a Release subdirectory
 	releaseDir := filepath.Join(m.installDir, "Release")
 
-	// Try different possible binary names
-	// whisper-cli.exe is the new standard (main.exe is deprecated)
+	// Try different possible binary names (platform-aware)
+	// On Windows: whisper-cli.exe / main.exe
+	// On Linux/macOS: whisper-cli / main
 	possibleNames := []string{
-		"whisper-cli.exe",
-		"main.exe",
+		"whisper-cli",
+		"main",
+	}
+	if runtime.GOOS == "windows" {
+		possibleNames = []string{
+			"whisper-cli.exe",
+			"main.exe",
+		}
 	}
 
 	// First check in Release subdirectory
@@ -386,8 +400,11 @@ func (m *Manager) getBinaryPath() string {
 		}
 	}
 
-	// Default to Release/main.exe
-	return filepath.Join(releaseDir, "main.exe")
+	// Default path
+	if runtime.GOOS == "windows" {
+		return filepath.Join(releaseDir, "main.exe")
+	}
+	return filepath.Join(releaseDir, "main")
 }
 
 // CheckOnline checks if internet is available

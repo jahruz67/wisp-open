@@ -1,4 +1,12 @@
 //go:build windows
+
+// ============================================================
+// WINDOWS-ONLY FILE — Native Windows overlay window using
+// Win32 API directly (CreateWindowEx, GDI drawing, etc.).
+// This shows a pill-shaped overlay on screen during recording.
+// The Linux equivalent is internal/linux/overlay.go (no-op).
+// ============================================================
+
 package windows
 
 import (

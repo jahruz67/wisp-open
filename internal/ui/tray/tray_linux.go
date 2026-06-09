@@ -1,4 +1,10 @@
 //go:build linux
+
+// ============================================================
+// LINUX-ONLY FILE — Sets the GTK program name for the system tray
+// on Linux. This is required for proper desktop integration.
+// ============================================================
+
 package tray
 
 /*

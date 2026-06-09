@@ -1,5 +1,11 @@
 //go:build linux
 
+// ============================================================
+// LINUX-ONLY FILE — This file compiles ONLY on Linux.
+// Any changes here will NOT affect the Windows build.
+// For the Windows equivalent, see text_insert_nonlinux.go
+// ============================================================
+
 package main
 
 import (
@@ -36,11 +42,11 @@ func (a *App) insertTranscription(text string) {
 
 func (a *App) releaseLinuxInputFocus() {
 	if a.ctx == nil {
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(30 * time.Millisecond)
 		return
 	}
 	wailsruntime.WindowHide(a.ctx)
-	time.Sleep(150 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 }
 
 func typeLinuxTextWithYdotool(text string) error {
@@ -114,6 +120,8 @@ func linuxYdotoolStatus() map[string]interface{} {
 	status["message"] = "ydotool is ready for direct typing."
 	return status
 }
+
+func getYdotoolSocketPath() (string, error) {
 	if socketPath := strings.TrimSpace(os.Getenv("YDOTOOL_SOCKET")); socketPath != "" {
 		if _, err := os.Stat(socketPath); err == nil {
 			return socketPath, nil

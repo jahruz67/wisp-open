@@ -1,4 +1,11 @@
 //go:build linux
+
+// ============================================================
+// LINUX-ONLY FILE — Linux media playback management.
+// Uses playerctl to pause/resume media during recording.
+// The Windows equivalent is in internal/windows/
+// ============================================================
+
 package linux
 
 import (

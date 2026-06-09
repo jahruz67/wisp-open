@@ -1,4 +1,11 @@
 //go:build linux
+
+// ============================================================
+// LINUX-ONLY FILE — Delegates all platform operations to the
+// internal/linux package (overlay, media, startup, process).
+// The Windows equivalent is platform_windows.go
+// ============================================================
+
 package platform
 
 import "wis-free-v3/internal/linux"

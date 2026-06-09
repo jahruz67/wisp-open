@@ -1,5 +1,12 @@
 //go:build linux
 
+// ============================================================
+// LINUX-ONLY FILE — No-op overlay implementation for Linux.
+// On Linux, the overlay is intentionally disabled (no desktop
+// notifications). The Windows equivalent with full Win32 overlay
+// is in internal/windows/overlay.go
+// ============================================================
+
 package linux
 
 // linuxOverlay intentionally does not show system notifications. Tray status

@@ -83,6 +83,8 @@ func (l *Listener) Start() {
 	}
 
 	if modOnly {
+		// WINDOWS-ONLY FEATURE: Modifier-only shortcuts (e.g. ctrl+win without a key)
+		// are only supported on Windows via modifier polling. On Linux, this is rejected.
 		if runtime.GOOS != "windows" {
 			logger.Error("Modifier-only shortcuts like %q are only supported on Windows", l.shortcut)
 			l.mu.Unlock()

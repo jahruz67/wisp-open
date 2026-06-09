@@ -126,6 +126,9 @@ func (a *App) startup(ctx context.Context) {
 	})
 
 	// Start system tray in a goroutine
+	// PLATFORM NOTE: On Linux, Wails' GTK main loop needs tray.Start() to be
+	// called synchronously (uses systray.Register). On Windows (and macOS),
+	// tray.Start() blocks for the Win32 message pump, so it must run in a goroutine.
 	if runtime.GOOS == "linux" {
 		tray.Start(a)
 	} else {
@@ -295,7 +298,15 @@ func (a *App) processRecording(recordingPath string) {
 	// IDIOT-PROOFING: Ignore extremely short recordings (less than ~100ms or ~3KB)
 	// that are likely accidental clicks or hardware glitches.
 	stat, statErr := os.Stat(recordingPath)
-	if statErr == nil && stat.Size() < 4000 {
+	if statErr != nil {
+		logger.Error("Failed to stat recording file: %v", statErr)
+		if a.overlay != nil {
+			a.overlay.Hide()
+		}
+		tray.UpdateStatus("Ready")
+		return
+	}
+	if stat.Size() < 4000 {
 		logger.Info("Discarding tiny recording (%d bytes)", stat.Size())
 		os.Remove(recordingPath)
 		if a.overlay != nil {
@@ -406,6 +417,9 @@ func (a *App) GetSettings() map[string]interface{} {
 	conf["history"] = a.config.History
 	conf["startup"] = platform.IsInStartup()
 	conf["app_version"] = AppVersion
+	// PLATFORM NOTE: Linux-only settings — press daemon command and ydotool status.
+	// These are not included in the Windows build. See linux_press_daemon.go
+	// and text_insert_linux.go for the implementations.
 	if runtime.GOOS == "linux" {
 		if exePath, err := os.Executable(); err == nil {
 			conf["linux_press_command"] = exePath + " --press"
@@ -421,6 +435,10 @@ func (a *App) SaveSettings(settings map[string]interface{}) string {
 	if val, ok := settings["api_key"].(string); ok {
 		a.config.APIKey = val
 	}
+	// PLATFORM NOTE: Shortcut saving is disabled on Linux because Linux uses
+	// the `--press` daemon approach (GNOME custom shortcuts) instead of the
+	// built-in hotkey listener. On Windows, we allow the user to configure
+	// the shortcut through the settings UI.
 	if runtime.GOOS != "linux" {
 		if val, ok := settings["shortcut"].(string); ok {
 			_, _, modOnly, ok := hotkey.ParseShortcut(val)

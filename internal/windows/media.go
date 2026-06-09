@@ -1,4 +1,12 @@
 //go:build windows
+
+// ============================================================
+// WINDOWS-ONLY FILE — Windows media playback management.
+// Uses Win32 keybd_event to send VK_MEDIA_PLAY_PAUSE and a
+// PowerShell script to check media playback state via SMTC.
+// The Linux equivalent is internal/linux/media.go (playerctl)
+// ============================================================
+
 package windows
 
 import (

@@ -1,5 +1,13 @@
 //go:build unix && !windows
 
+// ============================================================
+// UNIX-ONLY FILE — This file compiles on Linux (and macOS) but
+// NOT on Windows. It provides Unix domain socket support for
+// single-instance enforcement and IPC communication with
+// helper processes (e.g. GNOME custom shortcuts).
+// The Windows equivalent stub is main_instance_stub.go
+// ============================================================
+
 package main
 
 import (

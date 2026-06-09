@@ -1,5 +1,12 @@
 //go:build linux
 
+// ============================================================
+// LINUX-ONLY FILE — Local HTTP daemon that receives hotkey
+// press/release pings from the GNOME custom shortcut helper.
+// This is the Linux equivalent of the Windows hotkey listener.
+// Any changes here will NOT affect the Windows build.
+// ============================================================
+
 package main
 
 import (

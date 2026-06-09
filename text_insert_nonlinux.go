@@ -1,5 +1,12 @@
 //go:build !linux
 
+// ============================================================
+// WINDOWS-ONLY FILE — This file compiles on Windows (and macOS)
+// but NOT on Linux. It uses robotgo for clipboard/paste which
+// is Windows-specific in this app. The Linux equivalent is
+// text_insert_linux.go which uses ydotool instead.
+// ============================================================
+
 package main
 
 import (
@@ -37,6 +44,6 @@ func (a *App) insertTranscription(text string) {
 
 // pasteText simulates Ctrl+V to paste from clipboard
 func (a *App) pasteText() {
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 	robotgo.KeyTap("v", "ctrl")
 }

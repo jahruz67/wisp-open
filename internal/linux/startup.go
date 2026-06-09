@@ -1,4 +1,12 @@
 //go:build linux
+
+// ============================================================
+// LINUX-ONLY FILE — Linux startup (autostart) management via
+// XDG Desktop Entry files (.desktop). Creates/removes autostart
+// entries and manages the application's .desktop file.
+// The Windows equivalent is in internal/windows/
+// ============================================================
+
 package linux
 
 import (

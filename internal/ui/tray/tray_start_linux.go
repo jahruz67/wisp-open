@@ -1,5 +1,12 @@
 //go:build linux
 
+// ============================================================
+// LINUX-ONLY FILE — Tray startup for Linux. On Linux, Wails'
+// GTK main loop is already running, so we use systray.Register
+// instead of systray.Run (which would start a second gtk_main).
+// The Windows equivalent is tray_start_nonlinux.go
+// ============================================================
+
 package tray
 
 import "github.com/getlantern/systray"

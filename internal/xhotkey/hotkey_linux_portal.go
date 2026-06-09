@@ -1,5 +1,12 @@
 //go:build linux
 
+// ============================================================
+// LINUX-ONLY FILE — Portal-based global hotkey implementation
+// for Linux using the org.freedesktop.portal.GlobalShortcuts
+// D-Bus API (Wayland/desktop-agnostic).
+// The Windows equivalent is in hotkey_windows.go
+// ============================================================
+
 package hotkey
 
 import (
