@@ -12,12 +12,6 @@ import (
 )
 
 func (a *App) insertTranscription(text string) {
-	if len(text) < 50 {
-		// Type short text directly to avoid clipboard interference
-		robotgo.TypeStr(text)
-		return
-	}
-
 	// Save old clipboard
 	oldClip, clipErr := wailsruntime.ClipboardGetText(a.ctx)
 
