@@ -6,7 +6,10 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	"wis-free-v3/internal/logger"
 )
 
 const linuxPressAddr = "127.0.0.1:9876"
@@ -14,12 +17,13 @@ const linuxPressAddr = "127.0.0.1:9876"
 // linuxPressState holds the daemon's state, protected by a mutex.
 // All field access must be done while holding the mutex.
 type linuxPressState struct {
-	mu               sync.Mutex
-	releaseTimer     *time.Timer
-	detectTimer      *time.Timer
-	recording        bool
-	holdMode         bool
-	detectingHold    bool
+	mu            sync.Mutex
+	releaseTimer  *time.Timer
+	detectTimer   *time.Timer
+	recording     bool
+	holdMode      bool
+	detectingHold bool
+	cycle         uint64
 }
 
 var pressState linuxPressState
@@ -68,12 +72,31 @@ func sendLinuxPressPing() error {
 func (a *App) startLinuxPressDaemon() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/press", func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				logger.Error("Linux press handler recovered from panic: %v", recovered)
+				http.Error(w, "press handler failed", http.StatusInternalServerError)
+			}
+		}()
+
+		if r.Method != http.MethodGet && r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+
 		a.handleLinuxPressPing()
 		w.WriteHeader(http.StatusNoContent)
 	})
 
 	go func() {
-		_ = http.ListenAndServe(linuxPressAddr, mux)
+		server := &http.Server{
+			Addr:              linuxPressAddr,
+			Handler:           mux,
+			ReadHeaderTimeout: 2 * time.Second,
+		}
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Error("Linux press daemon stopped: %v", err)
+		}
 	}()
 }
 
@@ -83,10 +106,12 @@ func (a *App) handleLinuxPressPing() {
 
 	if !pressState.recording {
 		// First ping: start recording with hold detection
+		pressState.cycle++
+		cycle := pressState.cycle
 		pressState.recording = true
 		pressState.holdMode = false
 		pressState.detectingHold = true
-		go a.StartRecording()
+		go a.startLinuxPressRecording(cycle)
 
 		if pressState.detectTimer != nil {
 			pressState.detectTimer.Stop()
@@ -94,7 +119,9 @@ func (a *App) handleLinuxPressPing() {
 		pressState.detectTimer = time.AfterFunc(linuxPressHoldDetectWindow, func() {
 			pressState.mu.Lock()
 			defer pressState.mu.Unlock()
-			pressState.detectingHold = false
+			if pressState.cycle == cycle {
+				pressState.detectingHold = false
+			}
 		})
 		return
 	}
@@ -121,10 +148,11 @@ func (a *App) resetLinuxPressReleaseTimerLocked() {
 		pressState.releaseTimer.Stop()
 	}
 
+	cycle := pressState.cycle
 	pressState.releaseTimer = time.AfterFunc(linuxPressReleaseGrace, func() {
 		pressState.mu.Lock()
 		defer pressState.mu.Unlock()
-		if pressState.recording && pressState.holdMode {
+		if pressState.cycle == cycle && pressState.recording && pressState.holdMode {
 			a.stopLinuxPressRecordingLocked()
 		}
 	})
@@ -132,6 +160,8 @@ func (a *App) resetLinuxPressReleaseTimerLocked() {
 
 func (a *App) stopLinuxPressRecordingLocked() {
 	// Caller must hold pressState.mu
+	wasRecording := pressState.recording
+	pressState.cycle++
 	if pressState.releaseTimer != nil {
 		pressState.releaseTimer.Stop()
 		pressState.releaseTimer = nil
@@ -140,10 +170,55 @@ func (a *App) stopLinuxPressRecordingLocked() {
 		pressState.detectTimer.Stop()
 		pressState.detectTimer = nil
 	}
-	if pressState.recording {
-		pressState.recording = false
-		pressState.holdMode = false
-		pressState.detectingHold = false
-		go a.StopRecording()
+	pressState.recording = false
+	pressState.holdMode = false
+	pressState.detectingHold = false
+	if wasRecording {
+		go a.stopLinuxPressRecording()
 	}
+}
+
+func (a *App) startLinuxPressRecording(cycle uint64) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			logger.Error("Linux press start recovered from panic: %v", recovered)
+			a.resetFailedLinuxPressCycle(cycle)
+		}
+	}()
+
+	a.StartRecording()
+	if atomic.LoadInt32(&a.recording) == 0 {
+		a.resetFailedLinuxPressCycle(cycle)
+	}
+}
+
+func (a *App) stopLinuxPressRecording() {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			logger.Error("Linux press stop recovered from panic: %v", recovered)
+		}
+	}()
+
+	a.StopRecording()
+}
+
+func (a *App) resetFailedLinuxPressCycle(cycle uint64) {
+	pressState.mu.Lock()
+	defer pressState.mu.Unlock()
+
+	if pressState.cycle != cycle {
+		return
+	}
+	pressState.cycle++
+	if pressState.releaseTimer != nil {
+		pressState.releaseTimer.Stop()
+		pressState.releaseTimer = nil
+	}
+	if pressState.detectTimer != nil {
+		pressState.detectTimer.Stop()
+		pressState.detectTimer = nil
+	}
+	pressState.recording = false
+	pressState.holdMode = false
+	pressState.detectingHold = false
 }

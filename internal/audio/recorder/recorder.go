@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
+	"runtime"
 	"sync"
 	"sync/atomic"
 
@@ -207,16 +208,15 @@ func (r *AudioRecorder) Stop() error {
 	// callbacks from writing to a closed file.
 	atomic.StoreInt32(&r.writing, 0)
 
-	// Stop the capture device. We keep the device initialized between recordings
-	// to avoid the expensive re-initialization cycle. ALSA privacy indicators
-	// will still turn off because we've stopped the stream.
+	// Stop the capture device.
 	if r.device != nil {
 		if err := r.device.Stop(); err != nil {
 			logger.Error("Failed to stop audio device: %v", err)
 		}
-		// Do NOT Uninit the device between recordings. Keeping it alive
-		// avoids expensive ALSA device re-probe and reduces CPU spikes.
-		// The device will be fully cleaned up in Cleanup().
+		if runtime.GOOS == "linux" {
+			r.device.Uninit()
+			r.device = nil
+		}
 	}
 
 	// Finalize WAV file

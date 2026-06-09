@@ -21,32 +21,16 @@ import (
 func (a *App) insertTranscription(text string) {
 	a.releaseLinuxInputFocus()
 
-	if isASCII(text) {
-		if err := typeLinuxTextWithYdotool(text); err == nil {
-			logger.Info("Typed transcription on Linux using ydotool (%d chars)", utf8.RuneCountInString(text))
-			return
-		} else {
-			logger.Error("Linux auto-type unavailable via ydotool: %v", err)
-		}
+	if err := typeLinuxTextWithYdotool(text); err == nil {
+		logger.Info("Typed transcription on Linux using ydotool (%d chars)", utf8.RuneCountInString(text))
+		return
 	} else {
-		logger.Info("Skipping ydotool direct typing fallback for non-ASCII transcript")
+		logger.Error("Linux direct typing unavailable via ydotool: %v", err)
 	}
 
-	if err := wailsruntime.ClipboardSetText(a.ctx, text); err != nil {
-		logger.Error("Failed to copy transcription to clipboard: %v", err)
-	} else {
-		waitForLinuxClipboardText(a.ctx, text)
-		if err := pasteLinuxClipboardWithYdotool(); err == nil {
-			logger.Info("Pasted transcription on Linux using clipboard + ydotool (%d chars)", utf8.RuneCountInString(text))
-			return
-		} else {
-			logger.Error("Linux auto-paste unavailable via ydotool: %v", err)
-		}
-	}
-
-	logger.Info("Copied transcription to clipboard; install ydotool with ydotoold/uinput access for automatic paste on GNOME Wayland")
+	logger.Info("Transcription was not inserted; install ydotool with ydotoold/uinput access for direct Linux typing")
 	if a.overlay != nil {
-		a.overlay.Show("Copied transcript. Press Ctrl+V to paste.")
+		a.overlay.Show("Direct typing unavailable. Check ydotool setup.")
 	}
 }
 
@@ -57,37 +41,6 @@ func (a *App) releaseLinuxInputFocus() {
 	}
 	wailsruntime.WindowHide(a.ctx)
 	time.Sleep(150 * time.Millisecond)
-}
-
-func isASCII(text string) bool {
-	for _, r := range text {
-		if r > 127 {
-			return false
-		}
-	}
-	return true
-}
-
-func waitForLinuxClipboardText(ctx context.Context, text string) {
-	deadline := time.Now().Add(700 * time.Millisecond)
-	for time.Now().Before(deadline) {
-		current, err := wailsruntime.ClipboardGetText(ctx)
-		if err == nil && current == text {
-			return
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-}
-
-func pasteLinuxClipboardWithYdotool() error {
-	time.Sleep(150 * time.Millisecond)
-
-	path, socketPath, err := getYdotoolCommand()
-	if err != nil {
-		return err
-	}
-
-	return runLinuxInputCommand(path, []string{"key", "-d", "20", "29:1", "47:1", "47:0", "29:0"}, "", 3*time.Second, socketPath)
 }
 
 func typeLinuxTextWithYdotool(text string) error {
@@ -126,7 +79,10 @@ func linuxYdotoolStatus() map[string]interface{} {
 		"socket_path": "",
 		"message":     "",
 		"setup_commands": []string{
-			"sudo dnf install ydotool",
+			"# Install ydotool with your package manager, for example:",
+			"sudo apt install ydotool    # Debian/Ubuntu",
+			"sudo dnf install ydotool    # Fedora",
+			"sudo pacman -S ydotool      # Arch",
 			"echo 'KERNEL==\"uinput\", SUBSYSTEM==\"misc\", TAG+=\"uaccess\", OPTIONS+=\"static_node=uinput\"' | sudo tee /etc/udev/rules.d/80-uinput.rules",
 			"sudo udevadm control --reload-rules && sudo udevadm trigger",
 			"systemctl --user enable --now ydotool.service",
@@ -155,11 +111,9 @@ func linuxYdotoolStatus() map[string]interface{} {
 	}
 
 	status["ready"] = true
-	status["message"] = "ydotool is ready for automatic paste."
+	status["message"] = "ydotool is ready for direct typing."
 	return status
 }
-
-func getYdotoolSocketPath() (string, error) {
 	if socketPath := strings.TrimSpace(os.Getenv("YDOTOOL_SOCKET")); socketPath != "" {
 		if _, err := os.Stat(socketPath); err == nil {
 			return socketPath, nil
@@ -167,12 +121,17 @@ func getYdotoolSocketPath() (string, error) {
 		return "", fmt.Errorf("YDOTOOL_SOCKET is set but not accessible: %s", socketPath)
 	}
 
-	socketPath := filepath.Join("/run/user", fmt.Sprintf("%d", os.Getuid()), ".ydotool_socket")
-	if _, err := os.Stat(socketPath); err != nil {
-		return "", fmt.Errorf("ydotoold socket not found at %s; run `systemctl --user start ydotool.service` after configuring /dev/uinput permissions", socketPath)
+	candidates := []string{
+		filepath.Join("/run/user", fmt.Sprintf("%d", os.Getuid()), ".ydotool_socket"),
+		"/tmp/.ydotool_socket",
+	}
+	for _, socketPath := range candidates {
+		if _, err := os.Stat(socketPath); err == nil {
+			return socketPath, nil
+		}
 	}
 
-	return socketPath, nil
+	return "", fmt.Errorf("ydotoold socket not found; run `systemctl --user start ydotool.service` after configuring /dev/uinput permissions")
 }
 
 func runLinuxInputCommand(path string, args []string, stdin string, timeout time.Duration, socketPath string) error {

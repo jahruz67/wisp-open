@@ -41,6 +41,159 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+print_ydotool_install_help() {
+    if command_exists dnf; then
+        echo "    sudo dnf install ydotool"
+    elif command_exists apt-get; then
+        echo "    sudo apt install ydotool"
+    elif command_exists pacman; then
+        echo "    sudo pacman -S ydotool"
+    else
+        echo "    Install ydotool with your distribution's package manager."
+    fi
+}
+
+find_ydotoold() {
+    if command_exists ydotoold; then
+        command -v ydotoold
+        return 0
+    fi
+    for candidate in /usr/bin/ydotoold /usr/local/bin/ydotoold; do
+        if [ -x "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+setup_ydotool_systemd() {
+    echo ""
+    echo "========================================"
+    echo "  Setting up ydotool systemd user service"
+    echo "========================================"
+    echo ""
+
+    if ! command_exists systemctl; then
+        echo "[ERROR] systemctl is not available on this system."
+        return 1
+    fi
+
+    if ! command_exists ydotool; then
+        echo "[ERROR] ydotool is not installed."
+        echo "Install it first:"
+        print_ydotool_install_help
+        return 1
+    fi
+
+    YDOTOOLD_BIN="$(find_ydotoold || true)"
+    if [ -z "$YDOTOOLD_BIN" ]; then
+        echo "[ERROR] ydotoold was not found after installing ydotool."
+        echo "Check your distribution's ydotool package or install the daemon package if it is split out."
+        return 1
+    fi
+
+    SYSTEMD_USER_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+    mkdir -p "$SYSTEMD_USER_DIR"
+    SERVICE_FILE="$SYSTEMD_USER_DIR/ydotool.service"
+
+    cat > "$SERVICE_FILE" << YDSVCEOF
+[Unit]
+Description=ydotool daemon for WIS Free V3 direct keyboard injection
+Documentation=man:ydotool(1)
+After=graphical-session.target
+
+[Service]
+Type=simple
+Environment=YDOTOOL_SOCKET=%t/.ydotool_socket
+ExecStart=$YDOTOOLD_BIN
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
+YDSVCEOF
+
+    echo "[INFO] Created $SERVICE_FILE"
+
+    UDEV_RULE_FILE="/etc/udev/rules.d/80-uinput.rules"
+    if [ -f "$UDEV_RULE_FILE" ] && grep -q 'KERNEL=="uinput"' "$UDEV_RULE_FILE"; then
+        echo "[INFO] uinput udev rule already exists at $UDEV_RULE_FILE"
+    else
+        echo ""
+        echo "  /dev/uinput permission rule is needed for ydotool direct typing:"
+        echo ""
+        echo '    KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uinput"'
+        echo ""
+        read -p "  Create or update $UDEV_RULE_FILE now? (requires sudo) (y/N): " CREATE_UDEV
+        if [[ "$CREATE_UDEV" == "y" || "$CREATE_UDEV" == "Y" ]]; then
+            echo 'KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uinput"' | \
+                sudo tee "$UDEV_RULE_FILE" > /dev/null
+            sudo udevadm control --reload-rules && sudo udevadm trigger
+            echo "[INFO] udev rule created and reloaded."
+            echo "       Log out and back in, or reboot, if ydotool still cannot access /dev/uinput."
+        else
+            echo "  Skipping udev rule creation. ydotoold may not be able to inject keystrokes."
+        fi
+    fi
+
+    echo ""
+    echo "  Reloading systemd user daemon..."
+    systemctl --user daemon-reload
+    echo "  Enabling ydotool user service..."
+    systemctl --user enable ydotool.service
+    echo "  Starting ydotool user service..."
+    if systemctl --user restart ydotool.service; then
+        echo "  ydotool systemd service is running."
+    else
+        echo "  [WARN] Could not start ydotool.service. Check: systemctl --user status ydotool.service"
+    fi
+    echo ""
+}
+
+INSTALL_MODE="none"  # none, system, user
+INSTALL_SYSTEMD=false
+SHOW_HELP=false
+
+for arg in "$@"; do
+    case "$arg" in
+        --install)
+            INSTALL_MODE="system"
+            ;;
+        --install-user)
+            INSTALL_MODE="user"
+            ;;
+        --install-systemd)
+            INSTALL_SYSTEMD=true
+            ;;
+        --help|-h)
+            SHOW_HELP=true
+            ;;
+        *)
+            echo "[ERROR] Unknown option: $arg"
+            echo "Usage: $0 [--install|--install-user|--install-systemd|--help]"
+            exit 1
+            ;;
+    esac
+done
+
+if [ "$SHOW_HELP" = true ]; then
+    echo "Usage: $0 [--install|--install-user|--install-systemd|--help]"
+    echo ""
+    echo "  (no flags)          Build only, then offer interactive install prompts"
+    echo "  --install           Build and install system-wide (/usr/local/bin)"
+    echo "  --install-user      Build and install per-user (~/.local/bin)"
+    echo "  --install-systemd   Generate, reload, enable, and start ydotool user service"
+    echo "  --help              Show this message"
+    echo ""
+    exit 0
+fi
+
+if [ "$INSTALL_SYSTEMD" = true ] && [ "$INSTALL_MODE" = "none" ]; then
+    setup_ydotool_systemd
+    exit $?
+fi
+
 # 1. Check for basic tools
 if ! command_exists go; then
     echo "[ERROR] Go is not installed. Please install Go 1.23+."
@@ -123,28 +276,20 @@ for dep in "${DEPS[@]}"; do
     fi
 done
 
-# ydotool check for text injection
+# ydotool check for direct text injection
 if ! command_exists ydotool; then
     echo ""
     echo "==============================================================="
     echo "  WARNING: ydotool is not installed"
     echo "==============================================================="
     echo ""
-    echo "  ydotool is required for automatic text injection (paste) on"
-    echo "  Wayland. Without it, transcribed text will only be copied to"
-    echo "  your clipboard."
+    echo "  ydotool is required for direct keyboard injection on Wayland."
+    echo "  Without it, WIS Free V3 cannot type transcribed text automatically"
+    echo "  into the active Linux window."
     echo ""
     echo "  Install ydotool and configure it:"
     echo ""
-    if command_exists dnf; then
-        echo "    sudo dnf install ydotool"
-    elif command_exists apt-get; then
-        echo "    sudo apt install ydotool"
-    elif command_exists pacman; then
-        echo "    sudo pacman -S ydotool"
-    else
-        echo "    Install ydotool from your distribution's package manager."
-    fi
+    print_ydotool_install_help
     echo ""
     echo "  Then set up udev rules for /dev/uinput access:"
     echo "    echo 'KERNEL==\"uinput\", SUBSYSTEM==\"misc\", TAG+=\"uaccess\", OPTIONS+=\"static_node=uinput\"' |"
@@ -305,35 +450,6 @@ echo "  Without flags, the build-only mode finishes here."
 echo "  Binary is ready at: $EXECUTABLE"
 echo ""
 
-# Parse flags
-INSTALL_MODE="none"  # none, system, user
-INSTALL_SYSTEMD=false
-
-for arg in "$@"; do
-    case "$arg" in
-        --install)
-            INSTALL_MODE="system"
-            ;;
-        --install-user)
-            INSTALL_MODE="user"
-            ;;
-        --install-systemd)
-            INSTALL_SYSTEMD=true
-            ;;
-        --help|-h)
-            echo "Usage: $0 [--install|--install-user|--install-systemd|--help]"
-            echo ""
-            echo "  (no flags)      Build only — outputs binary to $EXECUTABLE"
-            echo "  --install       Build + install system-wide (/usr/local/bin)"
-            echo "  --install-user  Build + install per-user (~/.local/bin)"
-            echo "  --install-systemd  Generate and enable systemd user units for ydotool"
-            echo "  --help          Show this message"
-            echo ""
-            exit 0
-            ;;
-    esac
-done
-
 # If no install flags were passed, do interactive prompt (backward-compatible)
 if [ "$INSTALL_MODE" = "none" ] && [ "$INSTALL_SYSTEMD" = false ]; then
     read -p "Would you like to install it system-wide to /usr/local/bin? (y/n): " INSTALL
@@ -354,69 +470,7 @@ fi
 
 # --- Systemd ydotool service setup ---
 if [ "$INSTALL_SYSTEMD" = true ]; then
-    echo ""
-    echo "========================================"
-    echo "  Setting up ydotool systemd user service"
-    echo "========================================"
-    echo ""
-
-    SYSTEMD_USER_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/systemd/user"
-    mkdir -p "$SYSTEMD_USER_DIR"
-
-    # Create ydotool.service for the user session
-    cat > "$SYSTEMD_USER_DIR/ydotool.service" << 'YDSVCEOF'
-[Unit]
-Description=ydotool daemon — simulate keyboard input on Wayland
-Documentation=man:ydotool(1)
-
-[Service]
-Type=simple
-ExecStart=/usr/bin/ydotoold
-Restart=on-failure
-RestartSec=2
-
-[Install]
-WantedBy=default.target
-YDSVCEOF
-
-    echo "[INFO] Created $SYSTEMD_USER_DIR/ydotool.service"
-
-    # Check/create udev rule for uinput
-    UDEV_RULE_FILE="/etc/udev/rules.d/80-uinput.rules"
-    if [ ! -f "$UDEV_RULE_FILE" ]; then
-        echo ""
-        echo "  /dev/uinput permission rule not found."
-        echo "  The following rule is needed for ydotool to inject keystrokes:"
-        echo ""
-        echo '    KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uinput"'
-        echo ""
-        read -p "  Create $UDEV_RULE_FILE now? (requires sudo) (y/N): " CREATE_UDEV
-        if [[ "$CREATE_UDEV" == "y" || "$CREATE_UDEV" == "Y" ]]; then
-            echo 'KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uinput"' | \
-                sudo tee "$UDEV_RULE_FILE" > /dev/null
-            sudo udevadm control --reload-rules && sudo udevadm trigger
-            echo "[INFO] udev rule created and reloaded."
-            echo "       You must log out and back in (or reboot) for the permissions to take effect."
-        else
-            echo "  Skipping udev rule creation. ydotoold may not be able to inject keystrokes."
-            echo "  You can create it manually later."
-        fi
-    else
-        echo "[INFO] udev rule already exists at $UDEV_RULE_FILE"
-    fi
-
-    # Reload systemd user daemon and enable the service
-    echo ""
-    echo "  Reloading systemd user daemon..."
-    systemctl --user daemon-reload
-    echo "  Enabling ydotool user service..."
-    systemctl --user enable ydotool.service
-    echo "  Starting ydotool user service..."
-    systemctl --user start ydotool.service || echo "  [WARN] Could not start (may need logout/login for udev perms)"
-    echo ""
-    echo "  ydotool systemd service is now set up."
-    echo "  You can check its status with: systemctl --user status ydotool"
-    echo ""
+    setup_ydotool_systemd
 fi
 
 # --- Binary installation ---

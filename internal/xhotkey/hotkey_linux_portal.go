@@ -338,34 +338,37 @@ func (hk *Hotkey) registerPortal() error {
 	return nil
 }
 
-// safeSendKeydown sends a keydown event to the hotkey channel, recovering from panic
-// if the channel has been closed (e.g. during hotkey re-registration).
-func (hk *Hotkey) safeSendKeydown() {
+func (hk *Hotkey) sendPortalEvent(name string, ch chan<- Event) {
+	hk.mu.Lock()
+	stopCh := hk.portalStop
+	registered := hk.registered
+	hk.mu.Unlock()
+	if !registered || stopCh == nil {
+		return
+	}
+
 	defer func() {
 		if r := recover(); r != nil {
-			logger.Debug("safeSendKeydown: recovered from panic: %v", r)
+			logger.Debug("sendPortalEvent(%s): recovered from panic: %v", name, r)
 		}
 	}()
+
 	select {
-	case hk.keydownIn <- Event{}:
-	default:
-		// Channel buffer is full or closed; skip.
+	case ch <- Event{}:
+	case <-stopCh:
+	case <-time.After(2 * time.Second):
+		logger.Error("Timed out delivering Linux portal hotkey %s event", name)
 	}
 }
 
-// safeSendKeyup sends a keyup event to the hotkey channel, recovering from panic
-// if the channel has been closed (e.g. during hotkey re-registration).
+// safeSendKeydown sends a keydown event to the hotkey channel.
+func (hk *Hotkey) safeSendKeydown() {
+	hk.sendPortalEvent("keydown", hk.keydownIn)
+}
+
+// safeSendKeyup sends a keyup event to the hotkey channel.
 func (hk *Hotkey) safeSendKeyup() {
-	defer func() {
-		if r := recover(); r != nil {
-			logger.Debug("safeSendKeyup: recovered from panic: %v", r)
-		}
-	}()
-	select {
-	case hk.keyupIn <- Event{}:
-	default:
-		// Channel buffer is full or closed; skip.
-	}
+	hk.sendPortalEvent("keyup", hk.keyupIn)
 }
 
 func (hk *Hotkey) portalSignalLoop() {
