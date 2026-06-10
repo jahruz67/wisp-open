@@ -9,3 +9,5 @@
 package main
 
 func (a *App) startLinuxPressDaemon() {}
+
+func stopLinuxPressDaemon() {}

@@ -99,6 +99,8 @@ type Overlay struct {
 	mu             sync.RWMutex
 	stopCh         chan struct{}
 	bgBrush        syscall.Handle
+	barBrushWhite  syscall.Handle // Pre-created GDI brush for white bars (recording animation)
+	barBrushOrange syscall.Handle // Pre-created GDI brush for orange bars (transcribing animation)
 	hFont          syscall.Handle
 	volume         uint64 // atomic: float64 stored via math.Float64bits
 	smoothedVolume uint64 // atomic: float64 stored via math.Float64bits
@@ -171,6 +173,12 @@ func (o *Overlay) Close() {
 	if o.hFont != 0 {
 		procDeleteObject.Call(uintptr(o.hFont))
 	}
+	if o.barBrushWhite != 0 {
+		procDeleteObject.Call(uintptr(o.barBrushWhite))
+	}
+	if o.barBrushOrange != 0 {
+		procDeleteObject.Call(uintptr(o.barBrushOrange))
+	}
 	close(o.stopCh)
 }
 
@@ -192,6 +200,12 @@ func (o *Overlay) run() {
 	o.bgBrush = syscall.Handle(uintptr(0))
 	brushRec, _, _ := procCreateSolidBrush.Call(COLOR_BG_DARK)
 	o.bgBrush = syscall.Handle(brushRec)
+
+	whiteRec, _, _ := procCreateSolidBrush.Call(uintptr(COLOR_WHITE))
+	o.barBrushWhite = syscall.Handle(whiteRec)
+
+	orangeRec, _, _ := procCreateSolidBrush.Call(uintptr(COLOR_MIC_ORANGE))
+	o.barBrushOrange = syscall.Handle(orangeRec)
 
 	fontName := syscall.StringToUTF16Ptr("Segoe UI")
 	fontRec, _, _ := procCreateFontW.Call(

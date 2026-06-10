@@ -28,13 +28,15 @@ func (a *App) insertTranscription(text string) {
 	// Paste
 	a.pasteText()
 
-	// Restore old clipboard after a short delay, but ONLY if the user
-	// hasn't manually copied something else or another burst hasn't finished.
+	// Restore old clipboard after a delay, but ONLY if the clipboard still
+	// contains our transcribed text (i.e. user hasn't copied something else).
 	if clipErr == nil && oldClip != "" {
 		go func() {
-			time.Sleep(1000 * time.Millisecond)
-			current, _ := wailsruntime.ClipboardGetText(a.ctx)
-			if current == text {
+			time.Sleep(1500 * time.Millisecond)
+			current, currentErr := wailsruntime.ClipboardGetText(a.ctx)
+			// Only restore if no error reading AND clipboard still holds our text
+			// AND it hasn't been modified by another goroutine
+			if currentErr == nil && current == text {
 				wailsruntime.ClipboardSetText(a.ctx, oldClip)
 				logger.Info("Clipboard history restored")
 			}

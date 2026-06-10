@@ -262,14 +262,22 @@ func (r *AudioRecorder) Cleanup() {
 }
 
 // onAudioData is called by miniaudio when audio data is available.
-// Safe to call without r.mu because atomic writing flag prevents writes
-// after Stop() clears the flag.
+// Safe to call without r.mu: the atomic writing flag prevents writes after
+// Stop() clears it, and r.device.Stop() waits for in-flight callbacks to
+// complete before returning, so r.outputFile is guaranteed valid here.
 func (r *AudioRecorder) onAudioData(_, inputSamples []byte, _ uint32) {
-	if atomic.LoadInt32(&r.writing) == 0 || r.outputFile == nil || len(inputSamples) == 0 {
+	if atomic.LoadInt32(&r.writing) == 0 || len(inputSamples) == 0 {
 		return
 	}
 
-	n, err := r.outputFile.Write(inputSamples)
+	// Double-check outputFile under the assumption that Stop() has already
+	// set writing=0 before touching the file handle.
+	f := r.outputFile
+	if f == nil {
+		return
+	}
+
+	n, err := f.Write(inputSamples)
 	if err == nil {
 		atomic.AddUint32(&r.dataSize, uint32(n))
 	}

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -25,18 +26,19 @@ import (
 
 // App struct
 type App struct {
-	ctx             context.Context
-	audioRecorder   *recorder.AudioRecorder
-	hotkeyListener  *hotkey.Listener
-	transcriber     *transcriber.Client
-	config          *config.Config
-	overlay         platform.Overlay
-	recordingPath   string
-	recording       int32
-	isQuitting      bool
-	wasMediaPlaying bool
-	whisperManager  *whisper.Manager
-	tempDir         string
+	ctx              context.Context
+	audioRecorder    *recorder.AudioRecorder
+	hotkeyListener   *hotkey.Listener
+	transcriber      *transcriber.Client
+	config           *config.Config
+	overlay          platform.Overlay
+	recordingPath    string
+	recording        int32
+	isQuitting       bool
+	wasMediaPlaying  bool
+	whisperManager   *whisper.Manager
+	tempDir          string
+	transcribing     int32 // atomic: 1 = transcription in progress, prevents concurrent
 }
 
 // NewApp creates a new App application struct
@@ -236,6 +238,8 @@ func (a *App) StartRecording() {
 			err = a.audioRecorder.Start(a.recordingPath)
 		}
 		if err != nil {
+			// Clean up the orphaned temp file since recording failed to start
+			os.Remove(a.recordingPath)
 			if a.overlay != nil {
 				a.overlay.Hide()
 			}
@@ -268,9 +272,12 @@ func (a *App) StopRecording() {
 	}
 
 	if a.audioRecorder == nil {
-		atomic.StoreInt32(&a.recording, 0)
 		return
 	}
+
+	// Capture the path BEFORE stopping the recorder, so it can't be
+	// overwritten by a concurrent StartRecording (which sets a.recordingPath).
+	pathToProcess := a.recordingPath
 
 	err := a.audioRecorder.Stop()
 	if err != nil {
@@ -278,13 +285,12 @@ func (a *App) StopRecording() {
 		return
 	}
 
-	// Capture the path before it can be overwritten by another immediate start
-	pathToProcess := a.recordingPath
 	// Transcribe in a goroutine to avoid blocking
 	go a.processRecording(pathToProcess)
 }
 
-// processRecording handles transcription and pasting
+// processRecording handles transcription and pasting.
+// Uses an atomic guard to prevent concurrent transcriptions.
 func (a *App) processRecording(recordingPath string) {
 	if recordingPath == "" {
 		logger.Error("No recording path set")
@@ -294,6 +300,15 @@ func (a *App) processRecording(recordingPath string) {
 		}
 		return
 	}
+
+	// Prevent concurrent transcriptions: only one goroutine can process at a time.
+	// If another transcription is already in progress, discard this recording.
+	if !atomic.CompareAndSwapInt32(&a.transcribing, 0, 1) {
+		logger.Info("Another transcription already in progress, discarding recording: %s", recordingPath)
+		os.Remove(recordingPath)
+		return
+	}
+	defer atomic.StoreInt32(&a.transcribing, 0)
 
 	// IDIOT-PROOFING: Ignore extremely short recordings (less than ~100ms or ~3KB)
 	// that are likely accidental clicks or hardware glitches.
@@ -407,7 +422,17 @@ func (a *App) processRecording(recordingPath string) {
 // GetSettings returns the current configuration
 func (a *App) GetSettings() map[string]interface{} {
 	conf := make(map[string]interface{})
-	conf["api_key"] = a.config.APIKey
+	// Mask the API key: only reveal the last 4 characters so the user can verify
+	// which key is configured without exposing the full secret to the frontend.
+	if a.config.APIKey != "" {
+		key := a.config.APIKey
+		if len(key) > 4 {
+			key = "****" + key[len(key)-4:]
+		}
+		conf["api_key"] = key
+	} else {
+		conf["api_key"] = ""
+	}
 	conf["shortcut"] = a.config.Shortcut
 	conf["whisper_model"] = a.config.WhisperModel
 	conf["ai_model"] = a.config.AIModel
@@ -433,7 +458,12 @@ func (a *App) GetSettings() map[string]interface{} {
 // SaveSettings updates the configuration
 func (a *App) SaveSettings(settings map[string]interface{}) string {
 	if val, ok := settings["api_key"].(string); ok {
-		a.config.APIKey = val
+		// Only update the API key if it's not the masked value returned by GetSettings.
+		// GetSettings masks the key as "****abcd" so the frontend can show the last 4 chars.
+		// If the user didn't change it and sent back the masked value, preserve the real key.
+		if !strings.HasPrefix(val, "****") {
+			a.config.APIKey = val
+		}
 	}
 	// PLATFORM NOTE: Shortcut saving is disabled on Linux because Linux uses
 	// the `--press` daemon approach (GNOME custom shortcuts) instead of the
@@ -502,7 +532,9 @@ func (a *App) SaveSettings(settings map[string]interface{}) string {
 		return fmt.Sprintf("Error saving settings: %v", err)
 	}
 
-	// Re-init transcriber with new settings
+	// Re-init transcriber with new settings.
+	// Note: a.config.APIKey is already updated by the api_key field above.
+	// Since GetSettings masks the key, we only update if it's not still the masked value.
 	a.transcriber = transcriber.NewClient(
 		a.config.APIKey,
 		a.config.WhisperModel,
@@ -668,6 +700,8 @@ func (a *App) Shutdown(ctx context.Context) {
 	if a.overlay != nil {
 		a.overlay.Close()
 	}
+	// Gracefully shut down the Linux press daemon HTTP server (no-op on Windows)
+	stopLinuxPressDaemon()
 	logger.Close()
 }
 
@@ -681,20 +715,30 @@ func (a *App) CheckOnline() bool {
 	return whisper.CheckOnline()
 }
 
-// IsWhisperInstalled checks if offline whisper is installed
+// IsWhisperInstalled checks if offline whisper is installed.
+// Reuses the cached whisperManager if available.
 func (a *App) IsWhisperInstalled() bool {
-	mgr, err := whisper.NewManager()
-	if err != nil {
-		return false
+	mgr := a.whisperManager
+	if mgr == nil {
+		var err error
+		mgr, err = whisper.NewManager()
+		if err != nil {
+			return false
+		}
 	}
 	return mgr.IsInstalled()
 }
 
-// GetWhisperInfo returns information about installed whisper
+// GetWhisperInfo returns information about installed whisper.
+// Reuses the cached whisperManager if available.
 func (a *App) GetWhisperInfo() map[string]interface{} {
-	mgr, err := whisper.NewManager()
-	if err != nil {
-		return map[string]interface{}{"installed": false}
+	mgr := a.whisperManager
+	if mgr == nil {
+		var err error
+		mgr, err = whisper.NewManager()
+		if err != nil {
+			return map[string]interface{}{"installed": false}
+		}
 	}
 
 	if !mgr.IsInstalled() {
@@ -741,10 +785,18 @@ func (a *App) UninstallWhisper() string {
 	return "Whisper uninstalled successfully"
 }
 
-// GetAvailableWhisperModels returns list of available whisper models
+// GetAvailableWhisperModels returns list of available whisper models,
+// sorted by name for consistent UI display.
 func (a *App) GetAvailableWhisperModels() []map[string]string {
-	var models []map[string]string
-	for name, info := range whisper.Models {
+	var names []string
+	for name := range whisper.Models {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	models := make([]map[string]string, 0, len(names))
+	for _, name := range names {
+		info := whisper.Models[name]
 		models = append(models, map[string]string{
 			"name": name,
 			"size": info.Size,

@@ -54,12 +54,13 @@ func Init() error {
 	return nil
 }
 
-// Close closes the log file handle.
+// Close flushes buffered writes and closes the log file handle.
 func Close() {
 	logMutex.Lock()
 	defer logMutex.Unlock()
 
 	if logFile != nil {
+		logFile.Sync() // Flush buffered writes so the last log entries are not lost
 		logFile.Close()
 		logFile = nil
 	}

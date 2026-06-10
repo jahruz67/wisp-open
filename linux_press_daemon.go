@@ -76,6 +76,9 @@ func sendLinuxPressPing() error {
 	return nil
 }
 
+// linuxPressServer holds the HTTP server reference for graceful shutdown.
+var linuxPressServer *http.Server
+
 func (a *App) startLinuxPressDaemon() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/press", func(w http.ResponseWriter, r *http.Request) {
@@ -100,7 +103,9 @@ func (a *App) startLinuxPressDaemon() {
 			Addr:              linuxPressAddr,
 			Handler:           mux,
 			ReadHeaderTimeout: 2 * time.Second,
+			IdleTimeout:       5 * time.Second,
 		}
+		linuxPressServer = server
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Error("Linux press daemon stopped: %v", err)
 		}

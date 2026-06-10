@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"wis-free-v3/internal/config"
 	"wis-free-v3/internal/logger"
@@ -47,7 +48,7 @@ var trayLabel = "wis-free-v3"
 // Menu item references for dynamic updates
 var statusMenuItem *systray.MenuItem
 var triggerCountItem *systray.MenuItem
-var triggerCount int
+var triggerCount int32
 var iconsInitOnce sync.Once
 var startupMenuItem *systray.MenuItem
 
@@ -233,10 +234,13 @@ func icoToPNG(data []byte) ([]byte, error) {
 	return nil, fmt.Errorf("no PNG image found in ico")
 }
 
+var statusMu sync.Mutex
 var lastStatus string
 
 // UpdateStatus updates the status text displayed in the tray menu.
 func UpdateStatus(status string) {
+	statusMu.Lock()
+	defer statusMu.Unlock()
 	if statusMenuItem != nil && status != lastStatus {
 		lastStatus = status
 		statusMenuItem.SetTitle("Status: " + status)
@@ -255,9 +259,9 @@ func UpdateStatus(status string) {
 
 // IncrementTriggerCount increments the troubleshooting counter in the tray.
 func IncrementTriggerCount() {
-	triggerCount++
+	count := atomic.AddInt32(&triggerCount, 1)
 	if triggerCountItem != nil {
-		triggerCountItem.SetTitle(fmt.Sprintf("Shortcut detected: %d times", triggerCount))
+		triggerCountItem.SetTitle(fmt.Sprintf("Shortcut detected: %d times", count))
 	}
 }
 

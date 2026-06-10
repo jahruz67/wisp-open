@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sync"
 )
 
 // Application defaults
@@ -42,6 +43,9 @@ type Config struct {
 
 const CurrentConfigVersion = 1
 const MaxHistoryItems = 100
+
+// saveMu protects concurrent writes to the config file.
+var saveMu sync.Mutex
 
 // DefaultConfig returns a new configuration with sensible default values.
 func DefaultConfig() *Config {
@@ -91,7 +95,11 @@ func (c *Config) migrate() {
 
 // Save writes the configuration to the specified file path.
 // If configPath is empty, it uses the default configuration path.
+// It uses atomic writes (write-to-temp then rename) to prevent corruption.
 func Save(c *Config, configPath string) error {
+	saveMu.Lock()
+	defer saveMu.Unlock()
+
 	if configPath == "" {
 		var err error
 		configPath, err = GetConfigPath()
@@ -111,7 +119,13 @@ func Save(c *Config, configPath string) error {
 		return err
 	}
 
-	return os.WriteFile(configPath, data, 0600)
+	// Atomic write: write to temp file, then rename to prevent corruption
+	// if the app crashes mid-write.
+	tmpPath := configPath + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, configPath)
 }
 
 // GetConfigPath returns the default configuration file path.

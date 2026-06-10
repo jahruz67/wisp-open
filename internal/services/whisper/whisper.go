@@ -2,6 +2,7 @@
 package whisper
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -295,7 +296,10 @@ func (m *Manager) Transcribe(audioPath string, language string) (string, error) 
 
 	// Run whisper with simple arguments: ./main -m model.bin -l language -f audio.wav
 	// Vulkan build uses GPU by default, no need for -ngl
-	cmd := exec.Command(binaryPath, "-m", modelPath, "-l", language, "-f", audioPath)
+	// Use a 5-minute timeout to prevent infinite hangs on long audio or stuck processes
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, binaryPath, "-m", modelPath, "-l", language, "-f", audioPath)
 
 	// Set working directory to the binary's location so it can find DLLs
 	cmd.Dir = filepath.Dir(binaryPath)
@@ -419,7 +423,10 @@ func CheckOnline() bool {
 	}
 	defer resp.Body.Close()
 
-	return true
+	// Drain the response body to allow connection reuse and prevent resource leak
+	io.Copy(io.Discard, resp.Body)
+
+	return resp.StatusCode == http.StatusOK
 }
 
 // DownloadProgress represents download progress
@@ -436,6 +443,10 @@ func downloadFile(url, dest string, progress chan<- DownloadProgress) error {
 		return err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("download failed: server returned HTTP %d", resp.StatusCode)
+	}
 
 	out, err := os.Create(dest)
 	if err != nil {
