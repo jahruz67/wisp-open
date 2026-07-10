@@ -10,6 +10,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"os"
 	"sync"
@@ -233,4 +234,14 @@ func (a *App) resetFailedLinuxPressCycle(cycle uint64) {
 	pressState.recording = false
 	pressState.holdMode = false
 	pressState.detectingHold = false
+}
+
+func stopLinuxPressDaemon() {
+	if linuxPressServer != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if err := linuxPressServer.Shutdown(ctx); err != nil {
+			logger.Error("Error shutting down Linux press daemon: %v", err)
+		}
+	}
 }
