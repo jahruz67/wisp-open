@@ -11,3 +11,7 @@ package main
 func (a *App) startLinuxPressDaemon() {}
 
 func stopLinuxPressDaemon() {}
+
+func linuxShortcutCommand(executable string) string {
+	return executable + " --action=toggle"
+}

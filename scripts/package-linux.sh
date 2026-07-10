@@ -25,6 +25,32 @@ fi
 
 PKG_VERSION="$(printf '%s' "$APP_VERSION" | sed 's/[^A-Za-z0-9.+~]/./g')"
 PKG_RELEASE="${PKG_RELEASE:-1}"
+BUILD_DEB=true
+BUILD_RPM=true
+
+for arg in "$@"; do
+    case "$arg" in
+        --deb)
+            BUILD_DEB=true
+            BUILD_RPM=false
+            ;;
+        --rpm)
+            BUILD_DEB=false
+            BUILD_RPM=true
+            ;;
+        --help|-h)
+            echo "Usage: $0 [--deb|--rpm]"
+            echo "  (no flag)  Build both formats when their build tools are installed."
+            echo "  --deb      Build only a Debian package."
+            echo "  --rpm      Build only an RPM package."
+            exit 0
+            ;;
+        *)
+            echo "[ERROR] Unknown option: $arg" >&2
+            exit 1
+            ;;
+    esac
+done
 
 echo "========================================"
 echo "   $APP_NAME - Linux Package Script"
@@ -48,8 +74,12 @@ require_command() {
 require_command go
 require_command pkg-config
 require_command gcc
-require_command dpkg-deb
-require_command rpmbuild
+if [ "$BUILD_DEB" = true ]; then
+    require_command dpkg-deb
+fi
+if [ "$BUILD_RPM" = true ]; then
+    require_command rpmbuild
+fi
 
 if ! command_exists wails; then
     echo "[INFO] Wails CLI not found. Installing..."
@@ -73,6 +103,20 @@ appindicator_ok() {
     pkg-config --exists appindicator3-0.1 2>/dev/null && return 0
     return 1
 }
+
+if pkg-config --exists ayatana-appindicator3-0.1 2>/dev/null; then
+    APPINDICATOR_DEB_DEP="libayatana-appindicator3-1"
+elif pkg-config --exists appindicator3-0.1 2>/dev/null; then
+    APPINDICATOR_DEB_DEP="libappindicator3-1"
+else
+    APPINDICATOR_DEB_DEP="libayatana-appindicator3-1"
+fi
+
+if pkg-config --exists webkit2gtk-4.1 2>/dev/null; then
+    WEBKIT_DEB_DEP="libwebkit2gtk-4.1-0"
+else
+    WEBKIT_DEB_DEP="libwebkit2gtk-4.0-37"
+fi
 
 echo "[1/5] Checking Linux build dependencies..."
 if ! pkg-config --exists gtk+-3.0 || ! webkit2_ok || ! pkg-config --exists alsa || ! appindicator_ok; then
@@ -114,12 +158,17 @@ fi
 
 if ! pkg-config --exists webkit2gtk-4.0 2>/dev/null && pkg-config --exists webkit2gtk-4.1 2>/dev/null; then
     WEBKIT41_PC=""
+    WEBKIT41_PKGCONFIG_DIR="$(pkg-config --variable=pcfiledir webkit2gtk-4.1 2>/dev/null || true)"
+    if [ -n "$WEBKIT41_PKGCONFIG_DIR" ] && [ -f "$WEBKIT41_PKGCONFIG_DIR/webkit2gtk-4.1.pc" ]; then
+        WEBKIT41_PC="$WEBKIT41_PKGCONFIG_DIR/webkit2gtk-4.1.pc"
+    fi
     for dir in \
         $(printf '%s' "${PKG_CONFIG_PATH:-}" | tr ':' '\n') \
         /usr/lib64/pkgconfig \
         /usr/lib/pkgconfig \
         /usr/local/lib64/pkgconfig \
         /usr/local/lib/pkgconfig; do
+        [ -n "$WEBKIT41_PC" ] && break
         [ -z "$dir" ] && continue
         [ -f "$dir/webkit2gtk-4.1.pc" ] || continue
         WEBKIT41_PC="$dir/webkit2gtk-4.1.pc"
@@ -156,6 +205,9 @@ if [ -f "build/appicon.png" ]; then
     install -m 0644 "build/appicon.png" "$WORK_DIR/root/usr/share/pixmaps/$APP_NAME.png"
 elif [ -f "frontend/src/assets/images/logo-universal.png" ]; then
     install -m 0644 "frontend/src/assets/images/logo-universal.png" "$WORK_DIR/root/usr/share/pixmaps/$APP_NAME.png"
+else
+    echo "[ERROR] Application icon was not found; refusing to build a package with a broken desktop entry."
+    exit 1
 fi
 
 cat > "$WORK_DIR/root/usr/share/applications/$APP_NAME.desktop" <<EOF
@@ -175,6 +227,7 @@ if [ -f README.md ]; then
     install -m 0644 README.md "$WORK_DIR/root/usr/share/doc/$APP_NAME/README.md"
 fi
 
+if [ "$BUILD_DEB" = true ]; then
 echo "[4/5] Building .deb package..."
 DEB_ROOT="$WORK_DIR/deb"
 rm -rf "$DEB_ROOT"
@@ -190,7 +243,7 @@ Priority: optional
 Architecture: $ARCH_DEB
 Maintainer: $MAINTAINER
 Installed-Size: $INSTALLED_SIZE
-Depends: libgtk-3-0, libwebkit2gtk-4.0-37 | libwebkit2gtk-4.1-0, libasound2, libayatana-appindicator3-1
+Depends: libgtk-3-0, $WEBKIT_DEB_DEP, libasound2, $APPINDICATOR_DEB_DEP
 Recommends: ydotool
 Description: $COMMENT
  WIS Free V3 is a desktop voice dictation app built with Go and Wails.
@@ -198,7 +251,9 @@ Description: $COMMENT
 EOF
 
 dpkg-deb --build "$DEB_ROOT" "$DIST_DIR/${APP_NAME}_${PKG_VERSION}-${PKG_RELEASE}_${ARCH_DEB}.deb"
+fi
 
+if [ "$BUILD_RPM" = true ]; then
 echo "[5/5] Building .rpm package..."
 RPM_TOP="$WORK_DIR/rpm"
 RPM_PAYLOAD="$(pwd)/$WORK_DIR/root"
@@ -214,7 +269,6 @@ Summary:        $COMMENT
 License:        $LICENSE
 Requires:       gtk3
 Requires:       alsa-lib
-Requires:       libayatana-appindicator-gtk3
 Recommends:     ydotool
 
 %description
@@ -235,6 +289,7 @@ EOF
 
 rpmbuild --target "$ARCH_RPM" --define "_topdir $(pwd)/$RPM_TOP" -bb "$RPM_SPEC"
 find "$RPM_TOP/RPMS" -type f -name "*.rpm" -exec cp {} "$DIST_DIR/" \;
+fi
 
 echo ""
 echo "Packages written to:"

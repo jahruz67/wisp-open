@@ -35,34 +35,12 @@ jobs:
             libasound2-dev \
             libayatana-appindicator3-dev
 
-      - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
-
       - name: Install frontend dependencies
-        run: npm install
+        run: npm ci
         working-directory: frontend
 
-      - name: Determine version
-        id: version
-        run: |
-          if [ -f scripts/VERSION ]; then
-            VERSION=$(head -n1 scripts/VERSION | tr -d '\r\n' | xargs)
-          fi
-          if [ -z "$VERSION" ]; then
-            VERSION="dev"
-          fi
-          echo "app_version=$VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: Fix npm bin permissions
-        run: chmod +x frontend/node_modules/.bin/* 2>/dev/null || true
-
       - name: Build app
-        run: |
-          WAILS_WEBKIT_TAGS=""
-          if pkg-config --exists webkit2gtk-4.1 2>/dev/null; then
-            WAILS_WEBKIT_TAGS="-tags webkit2_41"
-          fi
-          wails build -platform linux/amd64 -clean $WAILS_WEBKIT_TAGS -ldflags "-X main.AppVersion=${{ steps.version.outputs.app_version }}"
+        run: bash scripts/build-linux.sh --no-install
 
       - name: Upload binary
         uses: actions/upload-artifact@v4

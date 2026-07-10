@@ -1,78 +1,170 @@
-# wis-free-v3
+# WIS Free V3
 
-A high-performance, cross-platform (Windows & Linux) voice dictation application built in Go using the Wails framework. **wis-free-v3** provides instant speech-to-text with AI-powered refinement, operating as a background service with global hotkey support.
+WIS Free V3 is a desktop voice-dictation app built with Go and Wails. It records audio from a global shortcut, transcribes it with Groq Whisper or a local backend, optionally refines the result, and types the text into the focused application.
 
----
+Windows and Linux are supported. Linux packages and source builds currently target `amd64`/`x86_64`.
 
-## 🚀 Features
+## Linux installation
 
-- **Blazing Fast**: Native implementation ensures zero lag during recording and transcription.
-- **Global Accessibility**: Trigger from anywhere via configurable global hotkeys.
-- **Cross-Platform**: Supports Windows natively and Linux (X11 strongly recommended; Wayland users may need to map desktop shortcut triggers).
-- **AI-Powered Refinement**: Integrates Groq (Whisper + Llama) for intelligent punctuation and grammar fixing.
-- **Offline Capability**: Supports local Whisper.cpp for sensitive or offline workflows.
-- **Micro-Automation**: Automatically pastes transcribed text directly into your active window.
-- **Ultra-Leighton**: Low memory footprint while running in the system tray.
+Install a package with the native package manager so it resolves runtime dependencies. Do not use `dpkg -i` on its own.
 
-## 📂 Project Structure
+### Debian and Ubuntu
 
-```text
-.
-├── assets/             # Branding and icons
-├── build/              # Wails build artifacts and manifests
-├── frontend/           # Svelte/Vue/React settings UI
-├── internal/           # Private application logic
-│   ├── audio/          # Sound capture and processing
-│   ├── config/         # Persistent configuration management
-│   ├── hotkey/         # Global keyboard hooks
-│   ├── logger/         # Structured logging utilities
-│   ├── services/       # Cloud and local AI providers
-│   ├── system/         # Windows OS integration (Startup/Tray)
-│   └── ui/             # Native overlay and window management
-├── scripts/            # Development and deployment automation
-├── app.go              # Application lifecycle management
-├── main.go             # Entry point
-└── wails.json          # Project configuration
+Download the `.deb` for your architecture, then run:
+
+```bash
+sudo apt install ./wis-free-v3_<version>_amd64.deb
 ```
 
-## 🛠️ Getting Started
+If a previous `dpkg -i` attempt left dependencies unfinished, repair them first:
 
-### Prerequisites
-
-- **Go**: 1.23 or higher
-- **Wails CLI**: `go install github.com/wailsapp/wails/v2/cmd/wails@latest`
-- **Compiler**: GCC (TDM-GCC recommended for Windows)
-
-### Installation & Build
-
-1. Clone the repository.
-2. Run the build script:
-   ```powershell
-   .\scripts\build.bat
-   ```
-3. The executable will be available in `build\bin/wis-free-v3.exe`.
-
-## ⚙️ Configuration
-
-Settings are managed via the built-in UI (Right-click tray → Settings) or manually in `%USERPROFILE%\.wis-free-v3\config.json`.
-
-### Linux Wayland Paste Setup
-
-If Settings says automatic paste needs `ydotool` setup, run the commands shown there. After those commands finish, restart your computer, then open WIS Free V3 again.
-
-```json
-{
-    "api_key": "gsk_...",
-    "shortcut": "alt+z",
-    "whisper_model": "whisper-large-v3-turbo",
-    "ai_model": "llama-3.3-70b-versatile"
-}
+```bash
+sudo apt -f install
+sudo apt install ./wis-free-v3_<version>_amd64.deb
 ```
 
-## 🤝 Contributing
+### Fedora and other RPM-based distributions
 
-This project is maintained with a focus on code quality and modular architecture. Please ensure all logic remains within the `internal/` package to maintain clean boundaries.
+Install the RPM with the distribution package manager:
 
-## 📄 License
+```bash
+sudo dnf install ./wis-free-v3-<version>-1.x86_64.rpm
+```
 
-Distributed under the MIT License. See `LICENSE` for more information.
+For openSUSE, use `sudo zypper install ./wis-free-v3-<version>.x86_64.rpm`.
+
+After installing, launch **WIS Free V3** from the application launcher or run `wis-free-v3` in a terminal. A reboot is not required.
+
+## Linux first-run setup
+
+### Global shortcut
+
+On current GNOME, KDE Plasma, and other desktops that implement the XDG GlobalShortcuts portal, set the shortcut in WIS Free V3 Settings. The desktop may ask you to approve or change the shortcut.
+
+If the portal is unavailable on your desktop, use the **Fallback System Shortcut** command shown in Settings:
+
+- GNOME: **Settings -> Keyboard -> Custom Shortcuts**
+- KDE Plasma: **System Settings -> Shortcuts -> Command/URL**
+
+That command toggles recording: one press starts and the next press stops. It is shell-quoted automatically, including when the app is installed in a path containing spaces. It also works from a cold start because it uses `--action=toggle`.
+
+Set `WISFREE_USE_PORTAL_HOTKEY=0` before launching the app only to deliberately disable portal shortcuts and use the fallback command instead.
+
+### Direct typing with ydotool
+
+WIS Free V3 uses `ydotool` to type transcriptions into the active application. This works on both Wayland and X11, but it needs the persistent `ydotoold` service.
+
+Install the dependency, then enable the service for your user:
+
+```bash
+# Debian / Ubuntu
+sudo apt install ydotool
+
+# Fedora
+sudo dnf install ydotool
+
+# Arch Linux
+sudo pacman -S ydotool
+
+# All distributions that provide the standard user unit
+systemctl --user enable --now ydotool.service
+```
+
+Distribution packages normally install the required `/dev/uinput` rule and the `ydotool.service` user unit. Do not add an extra manual udev rule unless your distribution's ydotool documentation says its package does not provide one.
+
+Open Settings again and check the **Direct typing** status. If the socket is still unavailable after enabling the service, log out and back in once, then run:
+
+```bash
+systemctl --user restart ydotool.service
+```
+
+For a ydotool installation without a packaged user unit, the source checkout can create a separate WIS Free V3 user unit without overwriting distribution files:
+
+```bash
+bash scripts/build-linux.sh --install-systemd
+```
+
+To diagnose it, use:
+
+```bash
+systemctl --user status ydotool.service
+journalctl --user -u ydotool.service -b
+```
+
+The app detects sockets from the standard user-runtime directory, `/tmp/.ydotool_socket`, and common system-service locations. You can override detection with `YDOTOOL_SOCKET=/path/to/socket` before launching WIS Free V3.
+
+### GNOME tray icon
+
+GNOME needs the **AppIndicator and KStatusNotifierItem Support** extension for a traditional system-tray icon. The app still runs without it, but use the launcher or a configured shortcut to open Settings. On Debian/Ubuntu:
+
+```bash
+sudo apt install gnome-shell-extension-appindicator
+```
+
+Enable the extension in **Settings -> Extensions**. Other major desktops generally expose the tray icon without an extra extension.
+
+## Build from source on Linux
+
+Install Go 1.24+, Node.js 20+, and native dependencies. The build script handles WebKit 4.0 versus 4.1 and Wails tags automatically.
+
+### Debian / Ubuntu
+
+```bash
+sudo apt update
+sudo apt install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev libasound2-dev libayatana-appindicator3-dev
+```
+
+If your release does not provide `libwebkit2gtk-4.1-dev`, install `libwebkit2gtk-4.0-dev` instead.
+
+### Fedora
+
+```bash
+sudo dnf install -y gcc gcc-c++ make pkgconf-pkg-config gtk3-devel webkit2gtk4.1-devel alsa-lib-devel libayatana-appindicator-gtk3-devel
+```
+
+### Arch Linux
+
+```bash
+sudo pacman -S base-devel pkgconf gtk3 webkit2gtk alsa-lib libayatana-appindicator
+```
+
+Then clone the repository and build:
+
+```bash
+git clone <repository-url>
+cd wisp-open
+go install github.com/wailsapp/wails/v2/cmd/wails@latest
+bash scripts/build-linux.sh --install-user
+```
+
+Use `--install` for `/usr/local/bin`, `--install-user` for `~/.local/bin`, or `--no-install` for a non-interactive build. The binary is written to `build/bin/wis-free-v3`.
+
+## Building packages
+
+Create distribution packages from a Linux checkout:
+
+```bash
+# Build only the format available on your build host
+bash scripts/package-linux.sh --deb
+bash scripts/package-linux.sh --rpm
+```
+
+With no flag, the script builds both formats and therefore requires both `dpkg-deb` and `rpmbuild`. Packages are placed in `dist/packages/`. The package metadata records the WebKit and AppIndicator ABI selected during the build, preventing a package built against one implementation from silently depending on the other.
+
+## Troubleshooting
+
+| Symptom | What to check |
+| --- | --- |
+| The package installed but the app will not launch | Install it with `apt install ./file.deb` or `dnf install ./file.rpm` so runtime libraries are resolved. Launch `wis-free-v3` from a terminal once to see any loader error. |
+| The shortcut does nothing | Configure the portal shortcut in Settings. If your desktop rejects it, use the fallback command displayed there. |
+| Transcription completes but text is not inserted | Open Settings and complete the ydotool setup. Check `systemctl --user status ydotool.service`. |
+| `ydotoold socket not found` | Enable the user service, then log out/in once only if the service still cannot access `/dev/uinput`. |
+| The app runs but no tray icon appears on GNOME | Install and enable the AppIndicator extension. |
+
+## Configuration
+
+Settings are available from the tray menu or the Settings window. The configuration file is stored in `~/.wis-free-v3/config.json`.
+
+## License
+
+Distributed under the MIT License.

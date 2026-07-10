@@ -50,14 +50,14 @@
                         <button id="recordBtn" onclick="recordShortcut()">Record</button>
                     </div>
                 </div>
-                <p class="hint">Press the key combination you want to use to start/stop recording (e.g. alt+z, ctrl+shift+space). Modifier-only combos like ctrl+alt are also supported on Windows.</p>
+                <p class="hint">Uses the desktop GlobalShortcuts portal when available. Press the key combination you want to use to start/stop recording (e.g. alt+z, ctrl+shift+space). Modifier-only combos like ctrl+alt are supported only on Windows.</p>
             </div>
 
             <div class="section-group-label">Input</div>
 
-            <!-- Linux Wayland Hotkey Command -->
+            <!-- Linux fallback shortcut command -->
             <div class="section" id="linuxPressSection" style="display: none;">
-                <label>System Hotkey Command (Linux)</label>
+                <label>Fallback System Shortcut (Linux)</label>
                 <div class="form-control">
                     <div class="flex-row">
                         <div class="input-wrapper">
@@ -66,9 +66,9 @@
                         <button onclick="copyLinuxPressCommand()">Copy</button>
                     </div>
                 </div>
+                <p class="hint">Use this if your desktop does not support the GlobalShortcuts portal. The command toggles recording: one press starts, the next stops.</p>
                 <p class="hint">GNOME: Settings -> Keyboard -> Custom Shortcuts -> Add a shortcut with the copied command.</p>
                 <p class="hint">KDE: System Settings -> Shortcuts -> Command/URL -> Add a shortcut with the copied command.</p>
-                <p class="hint">After running the ydotool setup commands, restart your computer, then open WIS Free V3 again.</p>
                 <div id="linuxYdotoolStatus" style="display: none; margin-top: 12px; padding: 10px 12px; border-radius: 7px; font-size: 12px; line-height: 1.45;"></div>
             </div>
 
@@ -366,7 +366,7 @@
                 const restart = document.createElement('div');
                 restart.style.marginTop = '8px';
                 restart.style.fontWeight = '600';
-                restart.textContent = 'Restart your computer after setup, then open WIS Free V3 again.';
+                restart.textContent = 'A restart is not normally needed. Log out and back in only if the ydotool service still cannot access /dev/uinput.';
                 el.appendChild(restart);
             }
         }

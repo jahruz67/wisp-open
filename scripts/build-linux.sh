@@ -86,6 +86,17 @@ setup_ydotool_systemd() {
         return 1
     fi
 
+    # Prefer the distribution-provided unit. Debian's ydotool package ships
+    # both the udev rule and a user unit; replacing it caused fresh installs
+    # to use a different socket and often made typing work only after relogin.
+    for service in ydotool.service ydotoold.service; do
+        if systemctl --user cat "$service" >/dev/null 2>&1; then
+            echo "[INFO] Using the distribution-provided $service"
+            systemctl --user enable --now "$service"
+            return 0
+        fi
+    done
+
     YDOTOOLD_BIN="$(find_ydotoold || true)"
     if [ -z "$YDOTOOLD_BIN" ]; then
         echo "[ERROR] ydotoold was not found after installing ydotool."
@@ -95,23 +106,23 @@ setup_ydotool_systemd() {
 
     SYSTEMD_USER_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
     mkdir -p "$SYSTEMD_USER_DIR"
-    SERVICE_FILE="$SYSTEMD_USER_DIR/ydotool.service"
+    SERVICE_FILE="$SYSTEMD_USER_DIR/wis-free-v3-ydotool.service"
 
     cat > "$SERVICE_FILE" << YDSVCEOF
 [Unit]
 Description=ydotool daemon for WIS Free V3 direct keyboard injection
 Documentation=man:ydotool(1)
 After=graphical-session.target
+PartOf=graphical-session.target
 
 [Service]
 Type=simple
-Environment=YDOTOOL_SOCKET=%t/.ydotool_socket
-ExecStart=$YDOTOOLD_BIN
+ExecStart=$YDOTOOLD_BIN --socket-path=%t/.ydotool_socket
 Restart=on-failure
 RestartSec=2
 
 [Install]
-WantedBy=default.target
+WantedBy=graphical-session.target
 YDSVCEOF
 
     echo "[INFO] Created $SERVICE_FILE"
@@ -140,13 +151,13 @@ YDSVCEOF
     echo ""
     echo "  Reloading systemd user daemon..."
     systemctl --user daemon-reload
-    echo "  Enabling ydotool user service..."
-    systemctl --user enable ydotool.service
-    echo "  Starting ydotool user service..."
-    if systemctl --user restart ydotool.service; then
+    echo "  Enabling WIS Free V3 ydotool user service..."
+    systemctl --user enable wis-free-v3-ydotool.service
+    echo "  Starting WIS Free V3 ydotool user service..."
+    if systemctl --user restart wis-free-v3-ydotool.service; then
         echo "  ydotool systemd service is running."
     else
-        echo "  [WARN] Could not start ydotool.service. Check: systemctl --user status ydotool.service"
+        echo "  [WARN] Could not start the ydotool service. Check: systemctl --user status wis-free-v3-ydotool.service"
     fi
     echo ""
 }
@@ -154,6 +165,7 @@ YDSVCEOF
 INSTALL_MODE="none"  # none, system, user
 INSTALL_SYSTEMD=false
 SHOW_HELP=false
+NO_INSTALL=false
 
 for arg in "$@"; do
     case "$arg" in
@@ -166,24 +178,28 @@ for arg in "$@"; do
         --install-systemd)
             INSTALL_SYSTEMD=true
             ;;
+        --no-install)
+            NO_INSTALL=true
+            ;;
         --help|-h)
             SHOW_HELP=true
             ;;
         *)
             echo "[ERROR] Unknown option: $arg"
-            echo "Usage: $0 [--install|--install-user|--install-systemd|--help]"
+            echo "Usage: $0 [--install|--install-user|--install-systemd|--no-install|--help]"
             exit 1
             ;;
     esac
 done
 
 if [ "$SHOW_HELP" = true ]; then
-    echo "Usage: $0 [--install|--install-user|--install-systemd|--help]"
+    echo "Usage: $0 [--install|--install-user|--install-systemd|--no-install|--help]"
     echo ""
     echo "  (no flags)          Build only, then offer interactive install prompts"
     echo "  --install           Build and install system-wide (/usr/local/bin)"
     echo "  --install-user      Build and install per-user (~/.local/bin)"
     echo "  --install-systemd   Generate, reload, enable, and start ydotool user service"
+	 echo "  --no-install        Build without prompting to install (for CI)"
     echo "  --help              Show this message"
     echo ""
     exit 0
@@ -404,12 +420,17 @@ fi
 
 if ! pkg-config --exists webkit2gtk-4.0 2>/dev/null && pkg-config --exists webkit2gtk-4.1 2>/dev/null; then
     WEBKIT41_PC=""
+    WEBKIT41_PKGCONFIG_DIR="$(pkg-config --variable=pcfiledir webkit2gtk-4.1 2>/dev/null || true)"
+    if [ -n "$WEBKIT41_PKGCONFIG_DIR" ] && [ -f "$WEBKIT41_PKGCONFIG_DIR/webkit2gtk-4.1.pc" ]; then
+        WEBKIT41_PC="$WEBKIT41_PKGCONFIG_DIR/webkit2gtk-4.1.pc"
+    fi
     for dir in \
         $(printf '%s' "${PKG_CONFIG_PATH:-}" | tr ':' '\n') \
         /usr/lib64/pkgconfig \
         /usr/lib/pkgconfig \
         /usr/local/lib64/pkgconfig \
         /usr/local/lib/pkgconfig; do
+        [ -n "$WEBKIT41_PC" ] && break
         [ -z "$dir" ] && continue
         [ -f "$dir/webkit2gtk-4.1.pc" ] || continue
         WEBKIT41_PC="$dir/webkit2gtk-4.1.pc"
@@ -451,7 +472,7 @@ echo "  Binary is ready at: $EXECUTABLE"
 echo ""
 
 # If no install flags were passed, do interactive prompt (backward-compatible)
-if [ "$INSTALL_MODE" = "none" ] && [ "$INSTALL_SYSTEMD" = false ]; then
+if [ "$INSTALL_MODE" = "none" ] && [ "$INSTALL_SYSTEMD" = false ] && [ "$NO_INSTALL" = false ]; then
     read -p "Would you like to install it system-wide to /usr/local/bin? (y/n): " INSTALL
     if [[ "$INSTALL" == "y" || "$INSTALL" == "Y" ]]; then
         INSTALL_MODE="system"

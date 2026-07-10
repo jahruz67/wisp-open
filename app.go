@@ -20,7 +20,6 @@ import (
 	"wis-free-v3/internal/services/whisper"
 	"wis-free-v3/internal/ui/tray"
 
-	"github.com/go-vgo/robotgo"
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -379,7 +378,10 @@ func (a *App) processRecording(recordingPath string) {
 
 	logger.Info("Transcribed %d characters", len(text))
 
-	activeWindow := robotgo.GetTitle()
+	// robotgo queries X11 directly. Do not invoke it from a Wayland session;
+	// the Linux helper returns an empty context instead of making transcription
+	// fail after the audio has already been captured.
+	activeWindow := activeWindowTitle()
 	logger.Info("Active window for context: %s", activeWindow)
 
 	// Refine text (optional)
@@ -447,7 +449,7 @@ func (a *App) GetSettings() map[string]interface{} {
 	// and text_insert_linux.go for the implementations.
 	if runtime.GOOS == "linux" {
 		if exePath, err := os.Executable(); err == nil {
-			conf["linux_press_command"] = exePath + " --press"
+			conf["linux_press_command"] = linuxShortcutCommand(exePath)
 		}
 		conf["linux_press_mode"] = true
 		conf["linux_ydotool_status"] = linuxYdotoolStatus()
@@ -465,41 +467,30 @@ func (a *App) SaveSettings(settings map[string]interface{}) string {
 			a.config.APIKey = val
 		}
 	}
-	// PLATFORM NOTE: Shortcut saving is disabled on Linux because Linux uses
-	// the `--press` daemon approach (GNOME custom shortcuts) instead of the
-	// built-in hotkey listener. On Windows, we allow the user to configure
-	// the shortcut through the settings UI.
-	if runtime.GOOS != "linux" {
-		if val, ok := settings["shortcut"].(string); ok {
-			_, _, modOnly, ok := hotkey.ParseShortcut(val)
-			if !ok {
-				logger.Error("Invalid shortcut: %s (rejected)", val)
-				return "Invalid shortcut - use modifiers plus a key (e.g. ctrl+k), or modifier-only on Windows (e.g. ctrl+win)"
-			}
-			if modOnly && runtime.GOOS != "windows" {
-				return "Modifier-only shortcuts (like ctrl+win) are only supported on Windows"
-			}
+	if val, ok := settings["shortcut"].(string); ok {
+		_, _, modOnly, ok := hotkey.ParseShortcut(val)
+		if !ok {
+			logger.Error("Invalid shortcut: %s (rejected)", val)
+			return "Invalid shortcut - use modifiers plus a key (e.g. ctrl+k), or modifier-only on Windows (e.g. ctrl+win)"
+		}
+		if modOnly && runtime.GOOS != "windows" {
+			return "Modifier-only shortcuts (like ctrl+win) are only supported on Windows"
+		}
 
-			a.config.Shortcut = val
-			// Update existing listener with new shortcut (hot-swap)
-			if a.hotkeyListener != nil {
-				a.hotkeyListener.UpdateShortcut(val)
-			} else {
-				// Should not happen if app started correctly, but just in case
-				a.hotkeyListener = hotkey.NewListener(val, a.StartRecording, a.StopRecording)
-				if runtime.GOOS != "windows" {
-					a.hotkeyListener.SetRegistrationErrorCallback(func(err error) {
-						logger.Error("Linux hotkey registration failed: %v", err)
-						go func() {
-							time.Sleep(2 * time.Second)
-							if a.overlay != nil {
-								a.overlay.Show("Shortcut registration failed. Please add a custom system shortcut calling 'wis-free-v3 --action=toggle' as a fallback.")
-							}
-						}()
-					})
-				}
-				a.hotkeyListener.Start()
+		a.config.Shortcut = val
+		// Hot-swap the listener on every platform. Linux uses the XDG
+		// GlobalShortcuts portal when the desktop implements it and otherwise
+		// exposes the custom-command fallback in Settings.
+		if a.hotkeyListener != nil {
+			a.hotkeyListener.UpdateShortcut(val)
+		} else {
+			a.hotkeyListener = hotkey.NewListener(val, a.StartRecording, a.StopRecording)
+			if runtime.GOOS != "windows" {
+				a.hotkeyListener.SetRegistrationErrorCallback(func(err error) {
+					logger.Error("Linux hotkey registration failed: %v", err)
+				})
 			}
+			a.hotkeyListener.Start()
 		}
 	}
 	if val, ok := settings["whisper_model"].(string); ok {
@@ -674,7 +665,7 @@ func (a *App) startupHeadless() {
 		}
 		a.hotkeyListener.Start()
 	} else {
-		logger.Info("Linux portal hotkey disabled; use the --press command from Settings for GNOME shortcuts")
+		logger.Info("Linux portal hotkey disabled; use the command shown in Settings for a desktop shortcut")
 	}
 
 	logger.Info("Components initialized successfully!")
@@ -686,7 +677,10 @@ func shouldStartBuiltInHotkeyListener() bool {
 	if runtime.GOOS != "linux" {
 		return true
 	}
-	return os.Getenv("WISFREE_USE_PORTAL_HOTKEY") == "1"
+	// The portal is the safest cross-desktop implementation on modern Linux.
+	// WISFREE_USE_PORTAL_HOTKEY=0 remains an escape hatch for desktops with a
+	// broken portal; Settings always provides a custom-shortcut fallback.
+	return os.Getenv("WISFREE_USE_PORTAL_HOTKEY") != "0"
 }
 
 // Shutdown cleans up resources
