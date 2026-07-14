@@ -400,8 +400,8 @@ func portalExtractIDs(bodyArg interface{}) []string {
 		// Each element is a (id, state) struct serialized as []interface{}.
 		var ids []string
 		for _, tuple := range v {
-			if arr, ok := tuple.([]interface{}); ok && len(arr) > 0 {
-				if id, ok := unwrapVariant(arr[0]).(string); ok {
+			if len(tuple) > 0 {
+				if id, ok := unwrapVariant(tuple[0]).(string); ok {
 					ids = append(ids, id)
 				}
 			}
@@ -420,15 +420,6 @@ func portalExtractIDs(bodyArg interface{}) []string {
 			return []string{s}
 		}
 		return nil
-	case []dbus.Struct:
-		// golang.org/x/dbus may decode (su) as dbus.Struct.
-		var ids []string
-		for _, s := range v {
-			if id, ok := unwrapVariant(s).(string); ok {
-				ids = append(ids, id)
-			}
-		}
-		return ids
 	case string:
 		return []string{v}
 	default:
