@@ -455,9 +455,16 @@ func (hk *Hotkey) portalSignalLoop() {
 	conn.Signal(ch)
 	defer conn.RemoveSignal(ch)
 
+	// Note: we intentionally do NOT filter on `sender` here. A D-Bus signal's
+	// SENDER header is always the portal's *unique* connection name (:1.x), not
+	// the well-known org.freedesktop.portal.Desktop. Filtering the match-rule
+	// `sender` key on a well-known name is unreliable across dbus-daemon/libdbus
+	// versions and silently drops every signal. The interface filter plus the
+	// shortcut-ID body check below is sufficient and matches the reference
+	// implementations (e.g. Ghostty subscribes with sender=null).
 	rule := fmt.Sprintf(
-		"type='signal',sender='%s',interface='%s'",
-		portalBusName, ifaceGlobalShortcuts,
+		"type='signal',interface='%s'",
+		ifaceGlobalShortcuts,
 	)
 	if err := conn.BusObject().Call("org.freedesktop.DBus.AddMatch", 0, rule).Store(); err != nil {
 		logger.Error("wis-free-v3 hotkey: AddMatch GlobalShortcuts: %v", err)
@@ -465,7 +472,7 @@ func (hk *Hotkey) portalSignalLoop() {
 	}
 	defer func() { _ = conn.BusObject().Call("org.freedesktop.DBus.RemoveMatch", 0, rule).Store() }()
 
-	logger.Info("Listening for global shortcut signals (sender=%s, interface=%s)", portalBusName, ifaceGlobalShortcuts)
+	logger.Info("Listening for global shortcut signals (interface=%s)", ifaceGlobalShortcuts)
 
 	for {
 		select {
@@ -479,11 +486,18 @@ func (hk *Hotkey) portalSignalLoop() {
 				continue
 			}
 
-			// The XDG GlobalShortcuts Activated/Deactivated signals carry a
-			// single argument of type a(su): an array of (id, state) structs.
-			// We match on our unique shortcut ID rather than on a specific
-			// body index, which is what the old code got wrong (it expected
-			// sig.Body[1] to be a string and silently dropped every signal).
+			// Diagnostic: confirm the daemon is actually delivering
+			// GlobalShortcuts signals to us (regardless of whether the ID
+			// matches our shortcut).
+			logger.Debug("wis-free-v3 hotkey: received signal %s (args=%d)", sig.Name, len(sig.Body))
+
+			// The XDG GlobalShortcuts Activated/Deactivated signals carry
+			// (session_handle o, shortcut_id s, timestamp t, options a{sv}).
+			// Older drafts used a single a(su) argument. We match on our
+			// unique shortcut ID across *all* body arguments rather than a
+			// specific index, which is what the old code got wrong (it
+			// expected sig.Body[1] to be a string and silently dropped every
+			// signal whenever the signature didn't match).
 			if !portalSignalMatchesID(sig.Body, wisfreeGlobalShortcutID) {
 				continue
 			}
