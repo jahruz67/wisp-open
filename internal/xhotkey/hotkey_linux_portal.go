@@ -273,12 +273,14 @@ func (hk *Hotkey) registerPortal() error {
 	}
 
 	type portalShortcut struct {
-		ID      string
-		Details map[string]dbus.Variant
+		ID          string
+		ParentWindow string // Required: empty string or window handle for the parent window
+		Details     map[string]dbus.Variant
 	}
 	shortcutsArg := []portalShortcut{
 		{
-			ID: wisfreeGlobalShortcutID,
+			ID:          wisfreeGlobalShortcutID,
+			ParentWindow: "", // Empty string since we have no focused window handle
 			Details: map[string]dbus.Variant{
 				"description":       dbus.MakeVariant("Hold to dictate; release to transcribe (WIS Free)"),
 				"preferred_trigger": dbus.MakeVariant(trigger),
@@ -291,6 +293,7 @@ func (hk *Hotkey) registerPortal() error {
 	}
 
 	var bindReqPath dbus.ObjectPath
+	// NOTE: BindShortcuts expects shortcuts as a(ssa{sv}) - array of structs with (string, string, dict)
 	if err := portal.Call(ifaceGlobalShortcuts+".BindShortcuts", 0, sessPath, shortcutsArg, "", bindOpts).Store(&bindReqPath); err != nil {
 		_ = conn.Object(portalBusName, sessPath).Call(ifaceSession+".Close", 0).Store()
 		_ = conn.Close()

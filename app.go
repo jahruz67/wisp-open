@@ -488,6 +488,14 @@ func (a *App) SaveSettings(settings map[string]interface{}) string {
 			if runtime.GOOS != "windows" {
 				a.hotkeyListener.SetRegistrationErrorCallback(func(err error) {
 					logger.Error("Linux hotkey registration failed: %v", err)
+					// Show notification for hotkey registration failures
+					go func() {
+						time.Sleep(500 * time.Millisecond)
+						if a.overlay != nil {
+							a.overlay.Show("Shortcut registration failed. Use the command shown in Settings for a desktop shortcut.")
+						}
+						logger.Info("HOTKEY SETUP: Portal failed. Add a custom GNOME/KDE shortcut with: wisp-open --action=toggle")
+					}()
 				})
 			}
 			a.hotkeyListener.Start()
@@ -655,17 +663,26 @@ func (a *App) startupHeadless() {
 		if runtime.GOOS != "windows" {
 			a.hotkeyListener.SetRegistrationErrorCallback(func(err error) {
 				logger.Error("Linux hotkey registration failed: %v", err)
+				// Always show an error notification when portal registration fails
+				// so the user knows to use the fallback method
 				go func() {
-					time.Sleep(2 * time.Second)
-					if a.overlay != nil {
-						a.overlay.Show("Shortcut registration failed. Add a custom system shortcut with the command shown in Settings.")
+					// Show notification immediately via tray if available
+					if err != nil {
+						logger.Error("Portal hotkey error (will show notification): %v", err)
 					}
+					// Also try to show overlay if window is visible
+					time.Sleep(500 * time.Millisecond)
+					if a.overlay != nil {
+						a.overlay.Show("Shortcut registration failed. Use the command shown in Settings for a desktop shortcut.")
+					}
+					// Log a clear instruction for the fallback method
+					logger.Info("HOTKEY SETUP: Portal failed. Add a custom GNOME/KDE shortcut with: wisp-open --action=toggle")
 				}()
 			})
 		}
 		a.hotkeyListener.Start()
 	} else {
-		logger.Info("Linux portal hotkey disabled; use the command shown in Settings for a desktop shortcut")
+		logger.Info("Linux portal hotkey disabled via WISFREE_USE_PORTAL_HOTKEY=0; use the command shown in Settings for a desktop shortcut")
 	}
 
 	logger.Info("Components initialized successfully!")
