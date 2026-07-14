@@ -342,6 +342,44 @@ button:active {
 
 
 
+/* ── Collapsible fallback details ── */
+.fallback-details {
+    color: var(--text);
+}
+
+.fallback-summary {
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 13px;
+    color: var(--text-2);
+    padding: 2px 0;
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.fallback-summary::-webkit-details-marker {
+    display: none;
+}
+
+.fallback-summary::before {
+    content: '▶';
+    font-size: 10px;
+    color: var(--text-3);
+    transition: transform 0.15s ease;
+    display: inline-block;
+}
+
+.fallback-details[open] > .fallback-summary::before {
+    transform: rotate(90deg);
+}
+
+.fallback-summary:hover {
+    color: var(--text);
+}
+
 /* ── Section group header divider ── */
 .section-group-label {
     font-size: 11px;

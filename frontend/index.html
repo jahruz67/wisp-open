@@ -55,21 +55,28 @@
 
             <div class="section-group-label">Input</div>
 
-            <!-- Linux fallback shortcut command -->
-            <div class="section" id="linuxPressSection" style="display: none;">
-                <label>Fallback System Shortcut (Linux)</label>
-                <div class="form-control">
-                    <div class="flex-row">
-                        <div class="input-wrapper">
-                            <input type="text" id="linuxPressCommand" readonly>
+            <!-- Linux ydotool status / Direct typing setup -->
+            <div class="section" id="linuxYdotoolSection" style="display: none;">
+                <label>Direct Typing (ydotool)</label>
+                <div id="linuxYdotoolStatus"></div>
+            </div>
+
+            <!-- Linux fallback shortcut command (collapsible) -->
+            <div class="section" id="linuxFallbackSection" style="display: none;">
+                <details class="fallback-details">
+                    <summary class="fallback-summary">Fallback Method</summary>
+                    <p class="hint" style="margin-top: 12px;">Use this if your desktop does not support the GlobalShortcuts portal. The command toggles recording: one press starts, the next stops.</p>
+                    <div class="form-control" style="margin-top: 12px;">
+                        <div class="flex-row">
+                            <div class="input-wrapper">
+                                <input type="text" id="linuxPressCommand" readonly>
+                            </div>
+                            <button onclick="copyLinuxPressCommand()">Copy</button>
                         </div>
-                        <button onclick="copyLinuxPressCommand()">Copy</button>
                     </div>
-                </div>
-                <p class="hint">Use this if your desktop does not support the GlobalShortcuts portal. The command toggles recording: one press starts, the next stops.</p>
-                <p class="hint">GNOME: Settings -> Keyboard -> Custom Shortcuts -> Add a shortcut with the copied command.</p>
-                <p class="hint">KDE: System Settings -> Shortcuts -> Command/URL -> Add a shortcut with the copied command.</p>
-                <div id="linuxYdotoolStatus" style="display: none; margin-top: 12px; padding: 10px 12px; border-radius: 7px; font-size: 12px; line-height: 1.45;"></div>
+                    <p class="hint" style="margin-top: 10px;">GNOME: Settings → Keyboard → Custom Shortcuts → Add a shortcut with the copied command.</p>
+                    <p class="hint">KDE: System Settings → Shortcuts → Command/URL → Add a shortcut with the copied command.</p>
+                </details>
             </div>
 
             <!-- Microphone -->
@@ -391,10 +398,22 @@
                     shortcutInput.value = settings.shortcut || 'alt+z';
                 }
                 if (settings.linux_press_mode) {
-                    const section = document.getElementById('linuxPressSection');
+                    const ydotoolSection = document.getElementById('linuxYdotoolSection');
+                    const fallbackSection = document.getElementById('linuxFallbackSection');
                     const cmdInput = document.getElementById('linuxPressCommand');
-                    if (section) section.style.display = 'block';
-                    if (cmdInput) cmdInput.value = settings.linux_press_command || '';
+
+                    if (ydotoolSection) ydotoolSection.style.display = 'block';
+                    if (fallbackSection) fallbackSection.style.display = 'block';
+
+                    if (cmdInput) {
+                        // Show just the executable name with quotes and the toggle flag
+                        const fullCommand = settings.linux_press_command || '';
+                        const match = fullCommand.match(/^'[^']*' (--action=toggle)$/);
+                        const togglePart = match ? "'wisp-open' " + match[1] : "'wisp-open' --action=toggle";
+                        cmdInput.value = togglePart;
+                        window._linuxFullCommand = togglePart;
+                    }
+
                     renderLinuxYdotoolStatus(settings.linux_ydotool_status);
                 }
                 document.getElementById('whisperModel').value = settings.whisper_model || 'whisper-large-v3-turbo';
@@ -474,7 +493,8 @@
             const cmdInput = document.getElementById('linuxPressCommand');
             if (!cmdInput) return;
 
-            const command = cmdInput.value || '';
+            // Reconstruct the full command from the backend settings
+            const command = window._linuxFullCommand || cmdInput.value || '';
             try {
                 if (navigator.clipboard && navigator.clipboard.writeText) {
                     await navigator.clipboard.writeText(command);
