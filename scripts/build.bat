@@ -81,7 +81,7 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
-wails build -clean -ldflags "-linkmode internal -X main.AppVersion=!APP_VERSION!" -skipbindings
+wails build -clean -ldflags "-linkmode external -X main.AppVersion=!APP_VERSION!" -skipbindings
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
