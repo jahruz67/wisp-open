@@ -381,6 +381,75 @@ func (hk *Hotkey) safeSendKeyup() {
 	hk.sendPortalEvent("keyup", hk.keyupIn)
 }
 
+// portalExtractIDs walks an Activated/Deactivated signal body argument and
+// returns the shortcut IDs it references. The XDG GlobalShortcuts spec
+// defines Activated/Deactivated with a single argument of type a(su):
+// an array of (string id, uint state) structs. We are defensive about
+// variant wrapping and about older drafts that may send a single struct
+// (su) or even just a bare string id.
+func portalExtractIDs(bodyArg interface{}) []string {
+	val := unwrapVariant(bodyArg)
+	switch v := val.(type) {
+	case []interface{}:
+		var ids []string
+		for _, item := range v {
+			ids = append(ids, portalExtractIDs(item)...)
+		}
+		return ids
+	case [][]interface{}:
+		// Each element is a (id, state) struct serialized as []interface{}.
+		var ids []string
+		for _, tuple := range v {
+			if arr, ok := tuple.([]interface{}); ok && len(arr) > 0 {
+				if id, ok := unwrapVariant(arr[0]).(string); ok {
+					ids = append(ids, id)
+				}
+			}
+		}
+		return ids
+	case []map[string]interface{}:
+		var ids []string
+		for _, m := range v {
+			if s, ok := m["id"].(string); ok {
+				ids = append(ids, s)
+			}
+		}
+		return ids
+	case map[string]interface{}:
+		if s, ok := v["id"].(string); ok {
+			return []string{s}
+		}
+		return nil
+	case []dbus.Struct:
+		// golang.org/x/dbus may decode (su) as dbus.Struct.
+		var ids []string
+		for _, s := range v {
+			if id, ok := unwrapVariant(s).(string); ok {
+				ids = append(ids, id)
+			}
+		}
+		return ids
+	case string:
+		return []string{v}
+	default:
+		return nil
+	}
+}
+
+// portalSignalMatchesID reports whether any of the signal's body arguments
+// reference the given shortcut ID. It scans every body argument because the
+// exact argument index varies across portal implementations.
+func portalSignalMatchesID(body []interface{}, wantID string) bool {
+	for _, arg := range body {
+		for _, id := range portalExtractIDs(arg) {
+			if id == wantID {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (hk *Hotkey) portalSignalLoop() {
 	defer close(hk.portalDone)
 
@@ -394,7 +463,7 @@ func (hk *Hotkey) portalSignalLoop() {
 	ch := make(chan *dbus.Signal, 32)
 	conn.Signal(ch)
 	defer conn.RemoveSignal(ch)
-	
+
 	rule := fmt.Sprintf(
 		"type='signal',sender='%s',interface='%s'",
 		portalBusName, ifaceGlobalShortcuts,
@@ -415,15 +484,16 @@ func (hk *Hotkey) portalSignalLoop() {
 			if !ok || sig == nil {
 				return
 			}
-			if len(sig.Body) < 2 {
+			if len(sig.Body) < 1 {
 				continue
 			}
 
-			// Bypass strict session path checking to avoid mismatch bugs.
-			// The shortcut ID is unique to our application.
-			rawID := unwrapVariant(sig.Body[1])
-			id, ok := rawID.(string)
-			if !ok || id != wisfreeGlobalShortcutID {
+			// The XDG GlobalShortcuts Activated/Deactivated signals carry a
+			// single argument of type a(su): an array of (id, state) structs.
+			// We match on our unique shortcut ID rather than on a specific
+			// body index, which is what the old code got wrong (it expected
+			// sig.Body[1] to be a string and silently dropped every signal).
+			if !portalSignalMatchesID(sig.Body, wisfreeGlobalShortcutID) {
 				continue
 			}
 
