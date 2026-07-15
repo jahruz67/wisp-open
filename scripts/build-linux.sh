@@ -351,8 +351,8 @@ if [ $MISSING_DEPS -eq 1 ]; then
     echo ""
     echo "It looks like you are missing some required libraries."
     echo ""
-    echo "Wayland note: global hotkeys use the XDG GlobalShortcuts portal (xdg-desktop-portal"
-    echo "with a supporting compositor, e.g. KDE Plasma or GNOME)."
+    echo "Wayland note: Linux global shortcuts use your desktop's custom shortcut settings"
+    echo "with the command shown in the app Settings window."
     echo ""
     
     DEBIAN_DEPS="build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.0-dev libasound2-dev libayatana-appindicator3-dev"
@@ -363,7 +363,7 @@ if [ $MISSING_DEPS -eq 1 ]; then
     FEDORA_DEPS="gcc gcc-c++ make pkgconf-pkg-config gtk3-devel webkit2gtk4.1-devel alsa-lib-devel libayatana-appindicator-gtk3-devel"
     # Same as FEDORA_DEPS but classic libappindicator (some spins/repos lack Ayatana -devel)
     FEDORA_DEPS_ALT="gcc gcc-c++ make pkgconf-pkg-config gtk3-devel webkit2gtk4.1-devel alsa-lib-devel libappindicator-gtk3-devel"
-    FEDORA_RUNTIME_OPT="playerctl xdg-desktop-portal ydotool"
+    FEDORA_RUNTIME_OPT="playerctl ydotool"
     ARCH_DEPS="base-devel pkgconf gtk3 webkit2gtk alsa-lib libayatana-appindicator"
     ARCH_RUNTIME_OPT="playerctl ydotool"
     

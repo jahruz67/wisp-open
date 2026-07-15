@@ -39,7 +39,7 @@
                 <p class="hint">Get your free key at <a href="#" onclick="window.runtime.BrowserOpenURL('https://console.groq.com/keys'); return false;" style="color: var(--accent);">console.groq.com/keys</a></p>
             </div>
 
-            <!-- Global Hotkey -->
+            <!-- Global Hotkey (hidden on Linux because Linux uses the system shortcut command below) -->
             <div class="section" id="shortcutSection">
                 <label>Global Hotkey</label>
                 <div class="form-control">
@@ -50,7 +50,7 @@
                         <button id="recordBtn" onclick="recordShortcut()">Record</button>
                     </div>
                 </div>
-                <p class="hint">Uses the desktop GlobalShortcuts portal when available. Press the key combination you want to use to start/stop recording (e.g. alt+z, ctrl+shift+space). Modifier-only combos like ctrl+alt are supported only on Windows.</p>
+                <p class="hint">Windows and macOS can listen for this shortcut directly. Modifier-only combos like ctrl+alt are supported only on Windows.</p>
             </div>
 
             <div class="section-group-label">Input</div>
@@ -61,11 +61,11 @@
                 <div id="linuxYdotoolStatus"></div>
             </div>
 
-            <!-- Linux fallback shortcut command (collapsible) -->
+            <!-- Linux system shortcut command (collapsible) -->
             <div class="section" id="linuxFallbackSection" style="display: none;">
                 <details class="fallback-details">
-                    <summary class="fallback-summary">Fallback Method</summary>
-                    <p class="hint" style="margin-top: 12px;">Use this if your desktop does not support the GlobalShortcuts portal. The command toggles recording: one press starts, the next stops.</p>
+                    <summary class="fallback-summary">Linux System Shortcut</summary>
+                    <p class="hint" style="margin-top: 12px;">This is the main Linux shortcut method. Copy this command into your desktop's custom shortcut settings. One press starts recording, and the next press stops.</p>
                     <div class="form-control" style="margin-top: 12px;">
                         <div class="flex-row">
                             <div class="input-wrapper">
@@ -209,6 +209,7 @@
 
     <script type="module">
         let apiKeyVisible = false;
+        let linuxShortcutMode = false;
 
         // Toggle API key visibility
         window.toggleApiKey = function () {
@@ -221,6 +222,10 @@
 
         // Record shortcut
         window.recordShortcut = function () {
+            if (linuxShortcutMode) {
+                return;
+            }
+
             const btn = document.getElementById('recordBtn');
             const input = document.getElementById('shortcutInput');
 
@@ -397,11 +402,14 @@
                 if (shortcutInput) {
                     shortcutInput.value = settings.shortcut || 'alt+z';
                 }
+                linuxShortcutMode = !!settings.linux_press_mode;
                 if (settings.linux_press_mode) {
+                    const shortcutSection = document.getElementById('shortcutSection');
                     const ydotoolSection = document.getElementById('linuxYdotoolSection');
                     const fallbackSection = document.getElementById('linuxFallbackSection');
                     const cmdInput = document.getElementById('linuxPressCommand');
 
+                    if (shortcutSection) shortcutSection.style.display = 'none';
                     if (ydotoolSection) ydotoolSection.style.display = 'block';
                     if (fallbackSection) fallbackSection.style.display = 'block';
 

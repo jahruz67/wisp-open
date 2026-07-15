@@ -5,16 +5,15 @@ package hotkey
 import "errors"
 
 func (hk *Hotkey) register() error {
-	return hk.registerPortal()
+	return errors.New("Linux in-app global hotkeys are disabled; use the desktop custom-shortcut command shown in Settings")
 }
 
 func (hk *Hotkey) unregister() error {
 	hk.mu.Lock()
+	defer hk.mu.Unlock()
 	if !hk.registered {
-		hk.mu.Unlock()
 		return errors.New("hotkey is not registered.")
 	}
 	hk.registered = false
-	hk.mu.Unlock()
-	return hk.cleanupPortal()
+	return nil
 }

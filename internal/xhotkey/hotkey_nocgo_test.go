@@ -14,7 +14,7 @@ import (
 	"wis-free-v3/internal/xhotkey"
 )
 
-// Without CGO on Darwin, registration is unsupported (panic). Linux without CGO uses the portal backend instead.
+// Without CGO on Darwin, registration is unsupported (panic). Linux without CGO returns the Linux unsupported-backend error.
 func TestHotkey(t *testing.T) {
 	defer func() {
 		if r := recover(); r != nil {
