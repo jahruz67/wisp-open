@@ -31,7 +31,9 @@ Install the RPM with the distribution package manager:
 sudo dnf install ./wis-free-v3-<version>-1.x86_64.rpm
 ```
 
-For openSUSE, use `sudo zypper install ./wis-free-v3-<version>.x86_64.rpm`.
+Uninstall it from a terminal with `sudo dnf remove wis-free-v3`. The RPM also ships desktop and AppStream metadata so graphical software centers such as GNOME Software can show the package as an app and offer install/uninstall actions for the local RPM.
+
+For openSUSE, use `sudo zypper install ./wis-free-v3-<version>.x86_64.rpm` and `sudo zypper remove wis-free-v3`.
 
 After installing, launch **WIS Free V3** from the application launcher or run `wis-free-v3` in a terminal. A reboot is not required.
 

@@ -196,6 +196,7 @@ rm -rf "$WORK_DIR"
 mkdir -p "$WORK_DIR/root/usr/bin"
 mkdir -p "$WORK_DIR/root/usr/share/applications"
 mkdir -p "$WORK_DIR/root/usr/share/pixmaps"
+mkdir -p "$WORK_DIR/root/usr/share/metainfo"
 mkdir -p "$WORK_DIR/root/usr/share/doc/$APP_NAME"
 mkdir -p "$DIST_DIR"
 
@@ -221,6 +222,32 @@ Icon=$APP_NAME
 StartupWMClass=$APP_NAME
 Terminal=false
 Categories=Utility;Audio;
+Keywords=dictation;speech;voice;transcription;whisper;
+EOF
+
+cat > "$WORK_DIR/root/usr/share/metainfo/$APP_NAME.metainfo.xml" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>$APP_NAME.desktop</id>
+  <metadata_license>MIT</metadata_license>
+  <project_license>$LICENSE</project_license>
+  <name>$DISPLAY_NAME</name>
+  <summary>$COMMENT</summary>
+  <description>
+    <p>WIS Free V3 is a desktop voice dictation app built with Go and Wails.</p>
+    <p>It records audio from a global shortcut, transcribes it, optionally refines the text, and types the result into the focused application.</p>
+  </description>
+  <launchable type="desktop-id">$APP_NAME.desktop</launchable>
+  <provides>
+    <binary>$APP_NAME</binary>
+  </provides>
+  <categories>
+    <category>Utility</category>
+    <category>Audio</category>
+  </categories>
+  <content_rating type="oars-1.1" />
+  <url type="homepage">https://github.com/Daishir0/wisp-open</url>
+</component>
 EOF
 
 if [ -f README.md ]; then
@@ -250,6 +277,30 @@ Description: $COMMENT
  On Wayland, install ydotool for direct keyboard injection.
 EOF
 
+cat > "$DEB_ROOT/DEBIAN/postinst" <<'EOF'
+#!/usr/bin/env sh
+set -e
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
+fi
+if command -v appstreamcli >/dev/null 2>&1; then
+    appstreamcli refresh-cache --force >/dev/null 2>&1 || true
+fi
+exit 0
+EOF
+cat > "$DEB_ROOT/DEBIAN/postrm" <<'EOF'
+#!/usr/bin/env sh
+set -e
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
+fi
+if command -v appstreamcli >/dev/null 2>&1; then
+    appstreamcli refresh-cache --force >/dev/null 2>&1 || true
+fi
+exit 0
+EOF
+chmod 0755 "$DEB_ROOT/DEBIAN/postinst" "$DEB_ROOT/DEBIAN/postrm"
+
 dpkg-deb --build "$DEB_ROOT" "$DIST_DIR/${APP_NAME}_${PKG_VERSION}-${PKG_RELEASE}_${ARCH_DEB}.deb"
 fi
 
@@ -269,7 +320,10 @@ Summary:        $COMMENT
 License:        $LICENSE
 Requires:       gtk3
 Requires:       alsa-lib
+Requires:       webkit2gtk4.1
+Requires:       libayatana-appindicator-gtk3
 Recommends:     ydotool
+Provides:       application() application($APP_NAME.desktop)
 
 %description
 WIS Free V3 is a desktop voice dictation app built with Go and Wails.
@@ -280,10 +334,27 @@ rm -rf %{buildroot}
 mkdir -p %{buildroot}
 cp -a "$RPM_PAYLOAD"/. %{buildroot}/
 
+%post
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database /usr/share/applications >/dev/null 2>&1 || :
+fi
+if command -v appstreamcli >/dev/null 2>&1; then
+    appstreamcli refresh-cache --force >/dev/null 2>&1 || :
+fi
+
+%postun
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database /usr/share/applications >/dev/null 2>&1 || :
+fi
+if command -v appstreamcli >/dev/null 2>&1; then
+    appstreamcli refresh-cache --force >/dev/null 2>&1 || :
+fi
+
 %files
 %attr(0755,root,root) /usr/bin/$APP_NAME
 /usr/share/applications/$APP_NAME.desktop
 /usr/share/pixmaps/$APP_NAME.png
+/usr/share/metainfo/$APP_NAME.metainfo.xml
 /usr/share/doc/$APP_NAME/README.md
 EOF
 
