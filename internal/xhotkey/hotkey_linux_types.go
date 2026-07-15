@@ -2,7 +2,7 @@
 
 package hotkey
 
-// Modifier represents a modifier (X11 bitmask; also used when mapping to portal shortcut spec).
+// Modifier represents a modifier (X11 bitmask value used by non-Linux native backends and shortcut parsing).
 type Modifier uint32
 
 // See /usr/include/X11/X.h

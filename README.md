@@ -39,16 +39,12 @@ After installing, launch **WIS Free V3** from the application launcher or run `w
 
 ### Global shortcut
 
-On current GNOME, KDE Plasma, and other desktops that implement the XDG GlobalShortcuts portal, set the shortcut in WIS Free V3 Settings. The desktop may ask you to approve or change the shortcut.
-
-If the portal is unavailable on your desktop, use the **Fallback System Shortcut** command shown in Settings:
+Linux uses your desktop environment's custom shortcut feature as the primary global shortcut method. Copy the **Linux System Shortcut** command shown in Settings and bind it to your preferred key combination:
 
 - GNOME: **Settings -> Keyboard -> Custom Shortcuts**
 - KDE Plasma: **System Settings -> Shortcuts -> Command/URL**
 
 That command toggles recording: one press starts and the next press stops. It is shell-quoted automatically, including when the app is installed in a path containing spaces. It also works from a cold start because it uses `--action=toggle`.
-
-Set `WISFREE_USE_PORTAL_HOTKEY=0` before launching the app only to deliberately disable portal shortcuts and use the fallback command instead.
 
 ### Direct typing with ydotool
 
@@ -156,7 +152,7 @@ With no flag, the script builds both formats and therefore requires both `dpkg-d
 | Symptom | What to check |
 | --- | --- |
 | The package installed but the app will not launch | Install it with `apt install ./file.deb` or `dnf install ./file.rpm` so runtime libraries are resolved. Launch `wis-free-v3` from a terminal once to see any loader error. |
-| The shortcut does nothing | Configure the portal shortcut in Settings. If your desktop rejects it, use the fallback command displayed there. |
+| The shortcut does nothing | Copy the Linux System Shortcut command from Settings and bind it in your desktop's custom shortcut settings. |
 | Transcription completes but text is not inserted | Open Settings and complete the ydotool setup. Check `systemctl --user status ydotool.service`. |
 | `ydotoold socket not found` | Enable the user service, then log out/in once only if the service still cannot access `/dev/uinput`. |
 | The app runs but no tray icon appears on GNOME | Install and enable the AppIndicator extension. |

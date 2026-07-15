@@ -6,7 +6,6 @@ require (
 	github.com/gen2brain/malgo v0.11.24
 	github.com/getlantern/systray v1.2.2
 	github.com/go-vgo/robotgo v0.110.8
-	github.com/godbus/dbus/v5 v5.1.0
 	github.com/wailsapp/wails/v2 v2.11.0
 	golang.design/x/mainthread v0.3.0
 	golang.org/x/sys v0.33.0

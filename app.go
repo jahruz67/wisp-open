@@ -25,19 +25,19 @@ import (
 
 // App struct
 type App struct {
-	ctx              context.Context
-	audioRecorder    *recorder.AudioRecorder
-	hotkeyListener   *hotkey.Listener
-	transcriber      *transcriber.Client
-	config           *config.Config
-	overlay          platform.Overlay
-	recordingPath    string
-	recording        int32
-	isQuitting       bool
-	wasMediaPlaying  bool
-	whisperManager   *whisper.Manager
-	tempDir          string
-	transcribing     int32 // atomic: 1 = transcription in progress, prevents concurrent
+	ctx             context.Context
+	audioRecorder   *recorder.AudioRecorder
+	hotkeyListener  *hotkey.Listener
+	transcriber     *transcriber.Client
+	config          *config.Config
+	overlay         platform.Overlay
+	recordingPath   string
+	recording       int32
+	isQuitting      bool
+	wasMediaPlaying bool
+	whisperManager  *whisper.Manager
+	tempDir         string
+	transcribing    int32 // atomic: 1 = transcription in progress, prevents concurrent
 }
 
 // NewApp creates a new App application struct
@@ -468,37 +468,25 @@ func (a *App) SaveSettings(settings map[string]interface{}) string {
 		}
 	}
 	if val, ok := settings["shortcut"].(string); ok {
-		_, _, modOnly, ok := hotkey.ParseShortcut(val)
-		if !ok {
-			logger.Error("Invalid shortcut: %s (rejected)", val)
-			return "Invalid shortcut - use modifiers plus a key (e.g. ctrl+k), or modifier-only on Windows (e.g. ctrl+win)"
-		}
-		if modOnly && runtime.GOOS != "windows" {
-			return "Modifier-only shortcuts (like ctrl+win) are only supported on Windows"
-		}
-
-		a.config.Shortcut = val
-		// Hot-swap the listener on every platform. Linux uses the XDG
-		// GlobalShortcuts portal when the desktop implements it and otherwise
-		// exposes the custom-command fallback in Settings.
-		if a.hotkeyListener != nil {
-			a.hotkeyListener.UpdateShortcut(val)
+		if runtime.GOOS == "linux" {
+			logger.Info("Ignoring in-app shortcut recording on Linux; use the desktop custom-shortcut command shown in Settings")
 		} else {
-			a.hotkeyListener = hotkey.NewListener(val, a.StartRecording, a.StopRecording)
-			if runtime.GOOS != "windows" {
-				a.hotkeyListener.SetRegistrationErrorCallback(func(err error) {
-					logger.Error("Linux hotkey registration failed: %v", err)
-					// Show notification for hotkey registration failures
-					go func() {
-						time.Sleep(500 * time.Millisecond)
-						if a.overlay != nil {
-							a.overlay.Show("Shortcut registration failed. Use the command shown in Settings for a desktop shortcut.")
-						}
-						logger.Info("HOTKEY SETUP: Portal failed. Add a custom GNOME/KDE shortcut with: wisp-open --action=toggle")
-					}()
-				})
+			_, _, modOnly, ok := hotkey.ParseShortcut(val)
+			if !ok {
+				logger.Error("Invalid shortcut: %s (rejected)", val)
+				return "Invalid shortcut - use modifiers plus a key (e.g. ctrl+k), or modifier-only on Windows (e.g. ctrl+win)"
 			}
-			a.hotkeyListener.Start()
+			if modOnly && runtime.GOOS != "windows" {
+				return "Modifier-only shortcuts (like ctrl+win) are only supported on Windows"
+			}
+
+			a.config.Shortcut = val
+			if a.hotkeyListener != nil {
+				a.hotkeyListener.UpdateShortcut(val)
+			} else {
+				a.hotkeyListener = hotkey.NewListener(val, a.StartRecording, a.StopRecording)
+				a.hotkeyListener.Start()
+			}
 		}
 	}
 	if val, ok := settings["whisper_model"].(string); ok {
@@ -652,52 +640,24 @@ func (a *App) startupHeadless() {
 		}
 	}
 
-	// Ensure desktop integration for Wayland portals
+	// Ensure desktop integration for Linux custom shortcuts and tray metadata.
 	if err := platform.EnsureDesktopFile(tray.DefaultIconBytes()); err != nil {
 		logger.Error("Failed to ensure desktop file: %v", err)
 	}
 
-	// Initialize Hotkey Listener
-	if shouldStartBuiltInHotkeyListener() {
+	// Linux uses the desktop custom-shortcut command shown in Settings instead
+	// of an in-app global hotkey backend. Other platforms keep their native
+	// listeners.
+	if runtime.GOOS != "linux" {
 		a.hotkeyListener = hotkey.NewListener(a.config.Shortcut, a.StartRecording, a.StopRecording)
-		if runtime.GOOS != "windows" {
-			a.hotkeyListener.SetRegistrationErrorCallback(func(err error) {
-				logger.Error("Linux hotkey registration failed: %v", err)
-				// Always show an error notification when portal registration fails
-				// so the user knows to use the fallback method
-				go func() {
-					// Show notification immediately via tray if available
-					if err != nil {
-						logger.Error("Portal hotkey error (will show notification): %v", err)
-					}
-					// Also try to show overlay if window is visible
-					time.Sleep(500 * time.Millisecond)
-					if a.overlay != nil {
-						a.overlay.Show("Shortcut registration failed. Use the command shown in Settings for a desktop shortcut.")
-					}
-					// Log a clear instruction for the fallback method
-					logger.Info("HOTKEY SETUP: Portal failed. Add a custom GNOME/KDE shortcut with: wisp-open --action=toggle")
-				}()
-			})
-		}
 		a.hotkeyListener.Start()
 	} else {
-		logger.Info("Linux portal hotkey disabled via WISFREE_USE_PORTAL_HOTKEY=0; use the command shown in Settings for a desktop shortcut")
+		logger.Info("Linux shortcut setup uses the command shown in Settings; configure it in GNOME/KDE custom shortcuts")
 	}
 
 	logger.Info("Components initialized successfully!")
 
 	logger.Info("Basic app components loaded, continuing startup...")
-}
-
-func shouldStartBuiltInHotkeyListener() bool {
-	if runtime.GOOS != "linux" {
-		return true
-	}
-	// The portal is the safest cross-desktop implementation on modern Linux.
-	// WISFREE_USE_PORTAL_HOTKEY=0 remains an escape hatch for desktops with a
-	// broken portal; Settings always provides a custom-shortcut fallback.
-	return os.Getenv("WISFREE_USE_PORTAL_HOTKEY") != "0"
 }
 
 // Shutdown cleans up resources
