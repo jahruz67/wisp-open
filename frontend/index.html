@@ -24,19 +24,48 @@
 
             <div class="section-group-label">Authentication</div>
 
-            <!-- API Key -->
+            <!-- API Keys Dropdown Section -->
             <div class="section">
-                <label>Groq API Key</label>
-                <div class="form-control">
-                    <div class="flex-row">
-                        <div class="input-wrapper">
-                            <input type="password" id="apiKey" placeholder="gsk_...">
-                            <button class="eye-btn" onclick="toggleApiKey()" id="eyeBtn">👁️</button>
+                <details class="api-keys-details">
+                    <summary class="api-keys-summary">
+                        <span>API Keys</span>
+                        <span id="apiKeysStatus" style="color: var(--text-2); font-size: 12px; margin-left: 8px;">
+                            <span id="groqKeyStatus">No Groq key</span> | <span id="mistralKeyStatus">No Mistral key</span>
+                        </span>
+                    </summary>
+                    
+                    <div class="api-keys-content">
+                        <!-- Groq API Key -->
+                        <div class="api-key-section">
+                            <label style="margin-top: 12px; margin-bottom: 8px; display: block;">Groq API Key</label>
+                            <div class="form-control">
+                                <div class="flex-row">
+                                    <div class="input-wrapper">
+                                        <input type="password" id="groqApiKey" placeholder="gsk_...">
+                                        <button class="eye-btn" onclick="toggleGroqApiKey()" id="groqEyeBtn">👁️</button>
+                                    </div>
+                                    <button onclick="saveGroqApiKey()">Save</button>
+                                </div>
+                            </div>
+                            <p class="hint">Get your free key at <a href="#" onclick="window.runtime.BrowserOpenURL('https://console.groq.com/keys'); return false;" style="color: var(--accent);">console.groq.com/keys</a></p>
                         </div>
-                        <button onclick="saveApiKey()">Save</button>
+
+                        <!-- Mistral API Key -->
+                        <div class="api-key-section">
+                            <label style="margin-top: 12px; margin-bottom: 8px; display: block;">Mistral API Key</label>
+                            <div class="form-control">
+                                <div class="flex-row">
+                                    <div class="input-wrapper">
+                                        <input type="password" id="mistralApiKey" placeholder="mx_...">
+                                        <button class="eye-btn" onclick="toggleMistralApiKey()" id="mistralEyeBtn">👁️</button>
+                                    </div>
+                                    <button onclick="saveMistralApiKey()">Save</button>
+                                </div>
+                            </div>
+                            <p class="hint">Get your key at <a href="#" onclick="window.runtime.BrowserOpenURL('https://console.mistral.ai/api-keys'); return false;" style="color: var(--accent);">console.mistral.ai/api-keys</a></p>
+                        </div>
                     </div>
-                </div>
-                <p class="hint">Get your free key at <a href="#" onclick="window.runtime.BrowserOpenURL('https://console.groq.com/keys'); return false;" style="color: var(--accent);">console.groq.com/keys</a></p>
+                </details>
             </div>
 
             <!-- Global Hotkey (hidden on Linux because Linux uses the system shortcut command below) -->
@@ -74,8 +103,8 @@
                             <button onclick="copyLinuxPressCommand()">Copy</button>
                         </div>
                     </div>
-                    <p class="hint" style="margin-top: 10px;">GNOME: Settings → Keyboard → Custom Shortcuts → Add a shortcut with the copied command.</p>
-                    <p class="hint">KDE: System Settings → Shortcuts → Command/URL → Add a shortcut with the copied command.</p>
+                    <p class="hint" style="margin-top: 10px;">GNOME: Settings  Keyboard  Custom Shortcuts  Add a shortcut with the copied command.</p>
+                    <p class="hint">KDE: System Settings  Shortcuts  Command/URL  Add a shortcut with the copied command.</p>
                 </details>
             </div>
 
@@ -93,8 +122,9 @@
             <div class="section">
                 <label>Whisper Model</label>
                 <select id="whisperModel" onchange="saveWhisperModel()" class="form-control">
-                    <option value="whisper-large-v3-turbo">whisper-large-v3-turbo (Recommended)</option>
-                    <option value="whisper-large-v3">whisper-large-v3</option>
+                    <option value="whisper-large-v3-turbo">Whisper Large v3 Turbo (Groq)</option>
+                    <option value="whisper-large-v3">Whisper Large v3 (Groq)</option>
+                    <option value="voxtral-small-latest">Voxtral Small (Mistral)</option>
                 </select>
             </div>
 
@@ -116,12 +146,14 @@
                 <label>AI Model</label>
                 <select id="aiModel" onchange="saveAiModel()" class="form-control">
                     <option value="None">None — skip refinement</option>
-                    <option value="openai/gpt-oss-120b-high">openai/gpt-oss-120b (high reasoning)</option>
-                    <option value="openai/gpt-oss-120b">openai/gpt-oss-120b (low reasoning)</option>
-                    <option value="openai/gpt-oss-20b-high">openai/gpt-oss-20b (high reasoning)</option>
-                    <option value="openai/gpt-oss-20b">openai/gpt-oss-20b (low reasoning)</option>
-                    <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile</option>
-                    <option value="llama-3.1-8b-instant">llama-3.1-8b-instant (faster)</option>
+                    <option value="openai/gpt-oss-120b-high">GPT OSS 120B High (Groq)</option>
+                    <option value="openai/gpt-oss-120b">GPT OSS 120B (Groq)</option>
+                    <option value="openai/gpt-oss-20b-high">GPT OSS 20B High (Groq)</option>
+                    <option value="openai/gpt-oss-20b">GPT OSS 20B (Groq)</option>
+                    <option value="llama-3.3-70b-versatile">Llama 3.3 70B Versatile (Groq)</option>
+                    <option value="llama-3.1-8b-instant">Llama 3.1 8B Instant (Groq)</option>
+                    <option value="mistral-small-latest">Mistral Small (Mistral)</option>
+                    <option value="mistral-medium-latest">Mistral Medium (Mistral)</option>
                 </select>
             </div>
 
@@ -189,7 +221,7 @@
 
                     <div id="whisperInstalled" style="display: none;">
                         <div style="background: var(--green-dim); border: 1px solid rgba(61, 186, 110, 0.25); border-radius: 7px; padding: 13px 16px; margin-bottom: 14px;">
-                            <div style="color: var(--green); font-weight: 500; font-size: 13px;">✓ Offline Whisper installed</div>
+                            <div style="color: var(--green); font-weight: 500; font-size: 13px;"> Offline Whisper installed</div>
                             <div style="font-size: 12px; color: var(--text-2); margin-top: 4px;">
                                 Model: <span id="installedModel">—</span>
                             </div>
@@ -208,17 +240,55 @@
     </div>
 
     <script type="module">
-        let apiKeyVisible = false;
+        let groqApiKeyVisible = false;
+        let mistralApiKeyVisible = false;
         let linuxShortcutMode = false;
 
-        // Toggle API key visibility
-        window.toggleApiKey = function () {
-            const input = document.getElementById('apiKey');
-            const btn = document.getElementById('eyeBtn');
-            apiKeyVisible = !apiKeyVisible;
-            input.type = apiKeyVisible ? 'text' : 'password';
-            btn.textContent = apiKeyVisible ? '🙈' : '👁️';
+        // Toggle Groq API key visibility
+        window.toggleGroqApiKey = function () {
+            const input = document.getElementById('groqApiKey');
+            const btn = document.getElementById('groqEyeBtn');
+            groqApiKeyVisible = !groqApiKeyVisible;
+            input.type = groqApiKeyVisible ? 'text' : 'password';
+            btn.textContent = groqApiKeyVisible ? '👁️' : '👁️';
         };
+
+        // Toggle Mistral API key visibility
+        window.toggleMistralApiKey = function () {
+            const input = document.getElementById('mistralApiKey');
+            const btn = document.getElementById('mistralEyeBtn');
+            mistralApiKeyVisible = !mistralApiKeyVisible;
+            input.type = mistralApiKeyVisible ? 'text' : 'password';
+            btn.textContent = mistralApiKeyVisible ? '👁️' : '👁️';
+        };
+
+        // Save Groq API key
+        window.saveGroqApiKey = async function () {
+            const key = document.getElementById('groqApiKey').value.trim();
+            await window.go.main.App.SaveSettings({ groq_api_key: key });
+            showSaveStatus();
+            updateApiKeyStatus();
+        };
+
+        // Save Mistral API key
+        window.saveMistralApiKey = async function () {
+            const key = document.getElementById('mistralApiKey').value.trim();
+            await window.go.main.App.SaveSettings({ mistral_api_key: key });
+            showSaveStatus();
+            updateApiKeyStatus();
+        };
+
+        // Update API key status display
+        function updateApiKeyStatus() {
+            const groqKey = document.getElementById('groqApiKey').value;
+            const mistralKey = document.getElementById('mistralApiKey').value;
+            
+            const groqStatus = document.getElementById('groqKeyStatus');
+            const mistralStatus = document.getElementById('mistralKeyStatus');
+            
+            groqStatus.textContent = groqKey ? (groqKey.length > 4 ? 'Groq key set' : 'Groq key') : 'No Groq key';
+            mistralStatus.textContent = mistralKey ? (mistralKey.length > 4 ? 'Mistral key set' : 'Mistral key') : 'No Mistral key';
+        }
 
         // Record shortcut
         window.recordShortcut = function () {
@@ -397,7 +467,8 @@
             try {
                 const settings = await window.go.main.App.GetSettings();
 
-                document.getElementById('apiKey').value = settings.api_key || '';
+                document.getElementById('groqApiKey').value = settings.groq_api_key || '';
+                document.getElementById('mistralApiKey').value = settings.mistral_api_key || '';
                 const shortcutInput = document.getElementById('shortcutInput');
                 if (shortcutInput) {
                     shortcutInput.value = settings.shortcut || 'alt+z';
@@ -434,6 +505,7 @@
                 document.getElementById('appVersion').textContent = ver === 'dev' ? 'dev' : ('v' + ver);
 
                 renderHistoryList(settings.history || []);
+                updateApiKeyStatus();
             } catch (err) {
                 console.error("Failed to load settings:", err);
             }
@@ -456,13 +528,6 @@
                 console.error("Failed to load mics:", err);
             }
         }
-
-        // Save functions
-        window.saveApiKey = async function () {
-            const key = document.getElementById('apiKey').value.trim();
-            await window.go.main.App.SaveSettings({ api_key: key });
-            showSaveStatus();
-        };
 
         function showSaveStatus(message = 'Saved') {
             const el = document.getElementById('saveStatus');
@@ -540,7 +605,7 @@
                     statusEl.style.color = 'var(--green)';
                     statusEl.style.border = '1px solid rgba(61, 186, 110, 0.2)';
                 } else {
-                    statusEl.innerHTML = '● Offline — install local Whisper for transcription';
+                    statusEl.innerHTML = '● Offline \u2014 install local Whisper for transcription';
                     statusEl.style.background = 'var(--red-dim)';
                     statusEl.style.color = 'var(--red)';
                     statusEl.style.border = '1px solid rgba(224, 82, 82, 0.2)';
@@ -580,7 +645,7 @@
                     // Add local option to whisper dropdown
                     const localOption = document.createElement('option');
                     localOption.value = 'local-' + info.model;
-                    localOption.textContent = '⬡ Local — ' + info.model + ' (offline)';
+                    localOption.textContent = '↑ Local \u2014 ' + info.model + ' (offline)';
                     localOption.style.fontWeight = 'bold';
                     whisperSelect.insertBefore(localOption, whisperSelect.firstChild);
                 } else {

@@ -18,6 +18,8 @@
     --red-dim:      rgba(224, 82, 82, 0.12);
     --radius:       10px;
     --radius-sm:    7px;
+    --mistral:      #8a5cf0;
+    --mistral-dim:  rgba(138, 92, 240, 0.15);
     color-scheme: dark;
 }
 
@@ -35,14 +37,14 @@ body {
     -webkit-font-smoothing: antialiased;
 }
 
-/* ── Layout ── */
+/* Layout */
 .container {
     max-width: 680px;
     margin: 0 auto;
     padding: 32px 28px 60px;
 }
 
-/* ── Header ── */
+/* Header */
 h1 {
     font-size: 20px;
     font-weight: 600;
@@ -64,7 +66,7 @@ h1 {
     flex-wrap: nowrap;
 }
 
-/* ── Section cards ── */
+/* Section cards */
 .section {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -78,7 +80,7 @@ h1 {
     border-color: var(--border-hover);
 }
 
-/* ── Labels ── */
+/* Labels */
 label {
     display: block;
     font-size: 13px;
@@ -96,7 +98,7 @@ label {
     line-height: 1.5;
 }
 
-/* ── Inputs ── */
+/* Inputs */
 input[type="text"],
 input[type="password"],
 select,
@@ -157,12 +159,12 @@ input[type="checkbox"] {
     flex-shrink: 0;
 }
 
-/* ── Form control width ── */
+/* Form control width */
 .form-control {
     width: 100%;
 }
 
-/* ── Input wrapper (for eye-btn) ── */
+/* Input wrapper (for eye-btn) */
 .input-wrapper {
     position: relative;
     flex: 1;
@@ -197,7 +199,7 @@ input[type="checkbox"] {
     box-shadow: none !important;
 }
 
-/* ── Buttons ── */
+/* Buttons */
 button {
     background: var(--accent);
     color: #fff;
@@ -254,7 +256,7 @@ button:active {
     opacity: 1 !important;
 }
 
-/* ── Save status toast ── */
+/* Save status toast */
 .save-status {
     position: fixed;
     bottom: 24px;
@@ -279,7 +281,7 @@ button:active {
     opacity: 1;
 }
 
-/* ── History ── */
+/* History */
 .history-list {
     max-height: 240px;
     overflow-y: auto;
@@ -308,7 +310,7 @@ button:active {
     display: block;
 }
 
-/* ── Inline status badges (online/offline) ── */
+/* Inline status badges (online/offline) */
 #connectionStatus {
     border-radius: var(--radius-sm) !important;
     font-size: 13px !important;
@@ -333,16 +335,95 @@ button:active {
     background: var(--accent-hover) !important;
 }
 
-/* ── Offline Whisper section separator ── */
+/* Offline Whisper section separator */
 #offlineWhisperSection {
     border-top: 1px solid var(--border) !important;
     margin-top: 20px !important;
     padding-top: 20px !important;
 }
 
+/* API Keys Dropdown Section */
+.api-keys-details {
+    color: var(--text);
+}
 
+.api-keys-summary {
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 13px;
+    color: var(--text);
+    padding: 2px 0;
+    user-select: none;
+    list-style: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+}
 
-/* ── Collapsible fallback details ── */
+.api-keys-summary::-webkit-details-marker {
+    display: none;
+}
+
+.api-keys-summary::after {
+    content: '\u25b6';
+    font-size: 10px;
+    color: var(--text-3);
+    transition: transform 0.15s ease;
+    display: inline-block;
+    margin-left: 8px;
+}
+
+.api-keys-details[open] > .api-keys-summary::after {
+    transform: rotate(90deg);
+}
+
+.api-keys-summary:hover {
+    color: var(--text);
+}
+
+.api-keys-content {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+}
+
+.api-key-section {
+    margin-bottom: 12px;
+}
+
+.api-key-section:last-child {
+    margin-bottom: 0;
+}
+
+/* Provider badges for model options */
+select option[data-provider]::before {
+    content: attr(data-provider);
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    margin-right: 8px;
+    opacity: 0.8;
+}
+
+select option[data-provider="groq"]::before {
+    background: var(--accent-dim);
+    color: var(--accent);
+}
+
+select option[data-provider="mistral"]::before {
+    background: var(--mistral-dim);
+    color: var(--mistral);
+}
+
+select option[data-provider="local"]::before {
+    background: var(--green-dim);
+    color: var(--green);
+}
+
+/* Collapsible fallback details */
 .fallback-details {
     color: var(--text);
 }
@@ -365,7 +446,7 @@ button:active {
 }
 
 .fallback-summary::before {
-    content: '▶';
+    content: '\u25b6';
     font-size: 10px;
     color: var(--text-3);
     transition: transform 0.15s ease;
@@ -380,7 +461,7 @@ button:active {
     color: var(--text);
 }
 
-/* ── Section group header divider ── */
+/* Section group header divider */
 .section-group-label {
     font-size: 11px;
     font-weight: 600;
@@ -390,7 +471,7 @@ button:active {
     margin: 22px 0 8px;
 }
 
-/* ── Scrollbar ── */
+/* Scrollbar */
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
