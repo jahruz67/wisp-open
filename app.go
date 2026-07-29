@@ -344,8 +344,12 @@ func (a *App) processRecording(recordingPath string) {
 	isLocal := strings.HasPrefix(a.config.WhisperModel, "local-")
 
 	// IDIOT-PROOFING: Validate API key before attempting cloud transcription
-	if !isLocal && !strings.HasPrefix(a.config.APIKey, "gsk_") {
-		err = fmt.Errorf("invalid API key - must start with gsk_")
+	if !isLocal {
+		// Get the appropriate API key for the whisper model
+		apiKey := a.config.GetAPIKey(transcriber.GetProviderForModel(a.config.WhisperModel))
+		if apiKey == "" {
+			err = fmt.Errorf("API key is missing for the selected provider")
+		}
 	} else if isLocal {
 		// Use local whisper.cpp
 		if a.whisperManager == nil {
@@ -424,16 +428,25 @@ func (a *App) processRecording(recordingPath string) {
 // GetSettings returns the current configuration
 func (a *App) GetSettings() map[string]interface{} {
 	conf := make(map[string]interface{})
-	// Mask the API key: only reveal the last 4 characters so the user can verify
+	// Mask the API keys: only reveal the last 4 characters so the user can verify
 	// which key is configured without exposing the full secret to the frontend.
-	if a.config.APIKey != "" {
-		key := a.config.APIKey
+	if a.config.GroqAPIKey != "" {
+		key := a.config.GroqAPIKey
 		if len(key) > 4 {
 			key = "****" + key[len(key)-4:]
 		}
-		conf["api_key"] = key
+		conf["groq_api_key"] = key
 	} else {
-		conf["api_key"] = ""
+		conf["groq_api_key"] = ""
+	}
+	if a.config.MistralAPIKey != "" {
+		key := a.config.MistralAPIKey
+		if len(key) > 4 {
+			key = "****" + key[len(key)-4:]
+		}
+		conf["mistral_api_key"] = key
+	} else {
+		conf["mistral_api_key"] = ""
 	}
 	conf["shortcut"] = a.config.Shortcut
 	conf["whisper_model"] = a.config.WhisperModel
@@ -459,12 +472,18 @@ func (a *App) GetSettings() map[string]interface{} {
 
 // SaveSettings updates the configuration
 func (a *App) SaveSettings(settings map[string]interface{}) string {
-	if val, ok := settings["api_key"].(string); ok {
+	if val, ok := settings["groq_api_key"].(string); ok {
 		// Only update the API key if it's not the masked value returned by GetSettings.
 		// GetSettings masks the key as "****abcd" so the frontend can show the last 4 chars.
 		// If the user didn't change it and sent back the masked value, preserve the real key.
 		if !strings.HasPrefix(val, "****") {
-			a.config.APIKey = val
+			a.config.GroqAPIKey = val
+		}
+	}
+	if val, ok := settings["mistral_api_key"].(string); ok {
+		// Only update the API key if it's not the masked value returned by GetSettings.
+		if !strings.HasPrefix(val, "****") {
+			a.config.MistralAPIKey = val
 		}
 	}
 	if val, ok := settings["shortcut"].(string); ok {
@@ -520,10 +539,10 @@ func (a *App) SaveSettings(settings map[string]interface{}) string {
 	}
 
 	// Re-init transcriber with new settings.
-	// Note: a.config.APIKey is already updated by the api_key field above.
+	// Note: a.config.GroqAPIKey is already updated by the api_key field above.
 	// Since GetSettings masks the key, we only update if it's not still the masked value.
 	a.transcriber = transcriber.NewClient(
-		a.config.APIKey,
+		a.config.GroqAPIKey,
 		a.config.WhisperModel,
 		a.config.AIModel,
 		a.config.AIPrompt,
@@ -613,7 +632,8 @@ func (a *App) startupHeadless() {
 
 	// Initialize transcriber
 	a.transcriber = transcriber.NewClient(
-		a.config.APIKey,
+		a.config.GroqAPIKey,
+		a.config.MistralAPIKey,
 		a.config.WhisperModel,
 		a.config.AIModel,
 		a.config.AIPrompt,

@@ -31,7 +31,8 @@ type HistoryItem struct {
 // Config represents the complete application configuration.
 type Config struct {
 	Version          int           `json:"version"`
-	APIKey           string        `json:"api_key"`
+	GroqAPIKey       string        `json:"groq_api_key"`
+	MistralAPIKey    string        `json:"mistral_api_key"`
 	Shortcut         string        `json:"shortcut"`
 	WhisperModel     string        `json:"whisper_model"`
 	AIModel          string        `json:"ai_model"`
@@ -50,7 +51,8 @@ var saveMu sync.Mutex
 // DefaultConfig returns a new configuration with sensible default values.
 func DefaultConfig() *Config {
 	return &Config{
-		APIKey:           "",
+		GroqAPIKey:       "",
+		MistralAPIKey:    "",
 		Shortcut:         DefaultShortcut,
 		WhisperModel:     DefaultWhisperModel,
 		AIModel:          DefaultAIModel,
@@ -196,4 +198,26 @@ func (c *Config) AddHistoryItem(text, timestamp string) {
 // ClearHistory removes all history items.
 func (c *Config) ClearHistory() {
 	c.History = []HistoryItem{}
+}
+
+// GetAPIKey returns the API key for a specific provider
+func (c *Config) GetAPIKey(provider string) string {
+	switch provider {
+	case "groq":
+		return c.GroqAPIKey
+	case "mistral":
+		return c.MistralAPIKey
+	default:
+		return ""
+	}
+}
+
+// SetAPIKey sets the API key for a specific provider
+func (c *Config) SetAPIKey(provider, key string) {
+	switch provider {
+	case "groq":
+		c.GroqAPIKey = key
+	case "mistral":
+		c.MistralAPIKey = key
+	}
 }
