@@ -543,6 +543,7 @@ func (a *App) SaveSettings(settings map[string]interface{}) string {
 	// Since GetSettings masks the key, we only update if it's not still the masked value.
 	a.transcriber = transcriber.NewClient(
 		a.config.GroqAPIKey,
+		a.config.MistralAPIKey,
 		a.config.WhisperModel,
 		a.config.AIModel,
 		a.config.AIPrompt,
