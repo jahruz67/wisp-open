@@ -8,11 +8,22 @@ import (
 // ShowSettings displays current settings
 func ShowSettings(cfg *config.Config) {
 	fmt.Println("\n=== wis-free-v3 Settings ===")
-	fmt.Printf("API Key: %s...%s\n", cfg.APIKey[:8], cfg.APIKey[len(cfg.APIKey)-4:])
+	fmt.Printf("Groq API Key: %s\n", maskedKey(cfg.GroqAPIKey))
+	fmt.Printf("Mistral API Key: %s\n", maskedKey(cfg.MistralAPIKey))
 	fmt.Printf("Whisper Model: %s\n", cfg.WhisperModel)
 	fmt.Printf("AI Model: %s\n", cfg.AIModel)
 	fmt.Printf("Shortcut: %s\n", cfg.Shortcut)
 	fmt.Println("===========================")
+}
+
+func maskedKey(key string) string {
+	if key == "" {
+		return "not set"
+	}
+	if len(key) <= 4 {
+		return "****"
+	}
+	return "****" + key[len(key)-4:]
 }
 
 // EditSettings provides a simple way to modify settings
@@ -22,5 +33,3 @@ func EditSettings(cfg *config.Config) error {
 	fmt.Println("To edit settings, modify: ~/.wis-free-v3/config.json")
 	return nil
 }
-
-

@@ -25,8 +25,8 @@ const (
 
 // API endpoints
 const (
-	groqTranscriptionEndpoint   = "https://api.groq.com/openai/v1/audio/transcriptions"
-	groqChatEndpoint            = "https://api.groq.com/openai/v1/chat/completions"
+	groqTranscriptionEndpoint    = "https://api.groq.com/openai/v1/audio/transcriptions"
+	groqChatEndpoint             = "https://api.groq.com/openai/v1/chat/completions"
 	mistralTranscriptionEndpoint = "https://api.mistral.ai/v1/audio/transcriptions"
 	mistralChatEndpoint          = "https://api.mistral.ai/v1/chat/completions"
 )
@@ -367,7 +367,9 @@ func (c *Client) prepareAudioRequest(audioFilePath, language string) (*bytes.Buf
 	}
 
 	// Add language parameter
-	if language != "" {
+	// "auto" is a UI sentinel, not an ISO language code accepted by the APIs.
+	// Omitting the field enables provider-side language detection.
+	if language != "" && !strings.EqualFold(language, "auto") {
 		if err := writer.WriteField("language", language); err != nil {
 			return nil, "", fmt.Errorf("failed to write language field: %w", err)
 		}

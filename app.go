@@ -343,14 +343,7 @@ func (a *App) processRecording(recordingPath string) {
 	// Check if using local whisper
 	isLocal := strings.HasPrefix(a.config.WhisperModel, "local-")
 
-	// IDIOT-PROOFING: Validate API key before attempting cloud transcription
-	if !isLocal {
-		// Get the appropriate API key for the whisper model
-		apiKey := a.config.GetAPIKey(transcriber.GetProviderForModel(a.config.WhisperModel))
-		if apiKey == "" {
-			err = fmt.Errorf("API key is missing for the selected provider")
-		}
-	} else if isLocal {
+	if isLocal {
 		// Use local whisper.cpp
 		if a.whisperManager == nil {
 			var mgrErr error
@@ -366,7 +359,12 @@ func (a *App) processRecording(recordingPath string) {
 		}
 	} else {
 		// Use cloud API
-		text, err = a.transcriber.TranscribeAudio(recordingPath, a.config.Language)
+		apiKey := a.config.GetAPIKey(transcriber.GetProviderForModel(a.config.WhisperModel))
+		if apiKey == "" {
+			err = fmt.Errorf("API key is missing for the selected provider")
+		} else {
+			text, err = a.transcriber.TranscribeAudio(recordingPath, a.config.Language)
+		}
 	}
 	transcribeDuration := time.Since(startTranscribe)
 	logger.Info("Transcription completed in %v", transcribeDuration)

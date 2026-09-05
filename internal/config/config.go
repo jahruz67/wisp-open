@@ -14,6 +14,7 @@ const (
 	DefaultShortcut     = "alt+z"
 	DefaultWhisperModel = "whisper-large-v3-turbo"
 	DefaultAIModel      = "llama-3.3-70b-versatile"
+	DefaultVoxtralModel = "voxtral-mini-latest"
 	DefaultLanguage     = "en"
 	ConfigFileName      = "config.json"
 	ConfigDirName       = ".wis-free-v3"
@@ -42,7 +43,7 @@ type Config struct {
 	History          []HistoryItem `json:"history"`
 }
 
-const CurrentConfigVersion = 1
+const CurrentConfigVersion = 2
 const MaxHistoryItems = 100
 
 // saveMu protects concurrent writes to the config file.
@@ -51,6 +52,7 @@ var saveMu sync.Mutex
 // DefaultConfig returns a new configuration with sensible default values.
 func DefaultConfig() *Config {
 	return &Config{
+		Version:          CurrentConfigVersion,
 		GroqAPIKey:       "",
 		MistralAPIKey:    "",
 		Shortcut:         DefaultShortcut,
@@ -89,6 +91,9 @@ func Load(configPath string) (*Config, error) {
 
 // migrate handles version-based configuration upgrades
 func (c *Config) migrate() {
+	if c.Version < 2 && c.WhisperModel == "voxtral-small-latest" {
+		c.WhisperModel = DefaultVoxtralModel
+	}
 	if c.Version < CurrentConfigVersion {
 		// Migration logic for future versions goes here
 		c.Version = CurrentConfigVersion
