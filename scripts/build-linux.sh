@@ -46,8 +46,11 @@ print_ydotool_install_help() {
         echo "    sudo dnf install ydotool"
     elif command_exists apt-get; then
         echo "    sudo apt install ydotool"
+        echo "    # If ydotoold is still missing: sudo apt install ydotoold"
     elif command_exists pacman; then
         echo "    sudo pacman -S ydotool"
+    elif command_exists zypper; then
+        echo "    sudo zypper install ydotool"
     else
         echo "    Install ydotool with your distribution's package manager."
     fi
@@ -97,6 +100,15 @@ setup_ydotool_systemd() {
         fi
     done
 
+    # Fedora packages ydotool as a system service instead of a user service.
+    for service in ydotool.service ydotoold.service; do
+        if systemctl cat "$service" >/dev/null 2>&1; then
+            echo "[INFO] Using the distribution-provided system $service"
+            sudo systemctl enable --now "$service"
+            return 0
+        fi
+    done
+
     YDOTOOLD_BIN="$(find_ydotoold || true)"
     if [ -z "$YDOTOOLD_BIN" ]; then
         echo "[ERROR] ydotoold was not found after installing ydotool."
@@ -113,21 +125,20 @@ setup_ydotool_systemd() {
 Description=ydotool daemon for WIS Free V3 direct keyboard injection
 Documentation=man:ydotool(1)
 After=graphical-session.target
-PartOf=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=$YDOTOOLD_BIN --socket-path=%t/.ydotool_socket
+ExecStart=$YDOTOOLD_BIN
 Restart=on-failure
 RestartSec=2
 
 [Install]
-WantedBy=graphical-session.target
+WantedBy=default.target
 YDSVCEOF
 
     echo "[INFO] Created $SERVICE_FILE"
 
-    UDEV_RULE_FILE="/etc/udev/rules.d/80-uinput.rules"
+    UDEV_RULE_FILE="/etc/udev/rules.d/80-wis-free-v3-uinput.rules"
     if [ -f "$UDEV_RULE_FILE" ] && grep -q 'KERNEL=="uinput"' "$UDEV_RULE_FILE"; then
         echo "[INFO] uinput udev rule already exists at $UDEV_RULE_FILE"
     else
@@ -212,7 +223,7 @@ fi
 
 # 1. Check for basic tools
 if ! command_exists go; then
-    echo "[ERROR] Go is not installed. Please install Go 1.23+."
+    echo "[ERROR] Go is not installed. Please install Go 1.24+."
     exit 1
 fi
 
@@ -307,12 +318,8 @@ if ! command_exists ydotool; then
     echo ""
     print_ydotool_install_help
     echo ""
-    echo "  Then set up udev rules for /dev/uinput access:"
-    echo "    echo 'KERNEL==\"uinput\", SUBSYSTEM==\"misc\", TAG+=\"uaccess\", OPTIONS+=\"static_node=uinput\"' |"
-    echo "      sudo tee /etc/udev/rules.d/80-uinput.rules"
-    echo "    sudo udevadm control --reload-rules && sudo udevadm trigger"
-    echo ""
-    echo "  Then enable the ydotool user service (see the --install-systemd flag below)."
+    echo "  Then run this script with --install-systemd. It detects whether your"
+    echo "  distribution uses a user service (Debian/Arch) or system service (Fedora)."
     echo "==============================================================="
     echo ""
 fi
@@ -355,7 +362,8 @@ if [ $MISSING_DEPS -eq 1 ]; then
     echo "with the command shown in the app Settings window."
     echo ""
     
-    DEBIAN_DEPS="build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.0-dev libasound2-dev libayatana-appindicator3-dev"
+    DEBIAN_DEPS="build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev libasound2-dev libayatana-appindicator3-dev"
+    DEBIAN_DEPS_ALT="build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.0-dev libasound2-dev libayatana-appindicator3-dev"
     # Runtime nicety (optional): playerctl pauses media while recording
     DEBIAN_RUNTIME_OPT="playerctl ydotool"
     # Fedora 40+: WebKit2GTK 4.0 packages are gone; use 4.1 + Wails -tags webkit2_41 (see wails build below).
@@ -369,6 +377,7 @@ if [ $MISSING_DEPS -eq 1 ]; then
     
     echo "The full list of dependencies needed:"
     echo "  [Ubuntu/Debian]: sudo apt update && sudo apt install -y $DEBIAN_DEPS"
+    echo "                   (use libwebkit2gtk-4.0-dev instead if 4.1 is unavailable)"
     echo "  [Ubuntu/Debian] optional: sudo apt install -y $DEBIAN_RUNTIME_OPT"
     echo "  [Fedora]:        sudo dnf install -y $FEDORA_DEPS"
     echo "                   (if Ayatana devel is missing, use libappindicator-gtk3-devel — see FEDORA_DEPS_ALT in this script)"
@@ -381,7 +390,11 @@ if [ $MISSING_DEPS -eq 1 ]; then
         read -p "Would you like to automatically install missing dependencies now? (Requires sudo) (y/N): " INSTALL_DEPS
         if [[ "$INSTALL_DEPS" == "y" || "$INSTALL_DEPS" == "Y" ]]; then
             echo "Installing dependencies..."
-            sudo apt update && sudo apt install -y $DEBIAN_DEPS
+            sudo apt update
+            if ! sudo apt install -y $DEBIAN_DEPS; then
+                echo "[INFO] Retrying with WebKitGTK 4.0 development files..."
+                sudo apt install -y $DEBIAN_DEPS_ALT
+            fi
         else
             echo "Skipping installation."
             read -p "Press Enter to attempt build anyway, or Ctrl+C to cancel..."

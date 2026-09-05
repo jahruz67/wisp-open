@@ -1,0 +1,13 @@
+[Unit]
+Description=Direct typing service for WIS Free V3
+Documentation=man:ydotoold(8)
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/ydotoold
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

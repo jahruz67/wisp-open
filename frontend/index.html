@@ -22,6 +22,58 @@
         <!-- Settings Form -->
         <div id="settingsForm">
 
+            <!-- Linux first-run checklist -->
+            <div id="linuxSetupGroup" style="display: none;">
+                <div class="section-group-label">Linux setup</div>
+                <div class="section linux-setup-card">
+                    <div class="linux-setup-heading">
+                        <div>
+                            <label>Finish setup</label>
+                            <p class="hint linux-setup-intro">Complete these two items once, then WIS Free V3 is ready to dictate into any app.</p>
+                        </div>
+                        <span id="linuxDistroBadge" class="status-badge"></span>
+                    </div>
+
+                    <div class="setup-step">
+                        <div id="linuxTypingStepIcon" class="setup-step-icon">1</div>
+                        <div class="setup-step-content">
+                            <div class="setup-step-title">Direct typing</div>
+                            <div id="linuxYdotoolStatus" class="setup-step-message">Checking the ydotool service…</div>
+                            <div class="setup-actions">
+                                <button id="linuxSetupButton" onclick="setupLinuxDirectTyping()">Set up direct typing</button>
+                                <button class="btn-secondary" onclick="refreshLinuxSetup()">Check again</button>
+                            </div>
+                            <details id="linuxCommandsDetails" class="fallback-details" style="display: none;">
+                                <summary class="fallback-summary">Terminal command</summary>
+                                <pre id="linuxSetupCommands" class="command-block"></pre>
+                            </details>
+                        </div>
+                    </div>
+
+                    <div class="setup-step">
+                        <div class="setup-step-icon">2</div>
+                        <div class="setup-step-content">
+                            <div class="setup-step-title">Recording shortcut</div>
+                            <p class="hint">Copy this exact command and assign it to a custom keyboard shortcut. Press once to start recording and again to stop.</p>
+                            <div class="form-control" style="margin-top: 10px;">
+                                <div class="flex-row">
+                                    <div class="input-wrapper">
+                                        <input type="text" id="linuxPressCommand" readonly>
+                                    </div>
+                                    <button onclick="copyLinuxPressCommand()">Copy command</button>
+                                </div>
+                            </div>
+                            <details class="fallback-details desktop-instructions">
+                                <summary class="fallback-summary">Where to add the shortcut</summary>
+                                <p class="hint"><strong>GNOME / Ubuntu:</strong> Settings → Keyboard → View and Customize Shortcuts → Custom Shortcuts.</p>
+                                <p class="hint"><strong>KDE Plasma:</strong> System Settings → Keyboard → Shortcuts → Add New → Command or Script.</p>
+                                <p class="hint"><strong>Other desktops:</strong> Open Keyboard or Shortcuts settings and add a custom command.</p>
+                            </details>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="section-group-label">Authentication</div>
 
             <!-- API Keys Dropdown Section -->
@@ -83,30 +135,6 @@
             </div>
 
             <div class="section-group-label">Input</div>
-
-            <!-- Linux ydotool status / Direct typing setup -->
-            <div class="section" id="linuxYdotoolSection" style="display: none;">
-                <label>Direct Typing (ydotool)</label>
-                <div id="linuxYdotoolStatus"></div>
-            </div>
-
-            <!-- Linux system shortcut command (collapsible) -->
-            <div class="section" id="linuxFallbackSection" style="display: none;">
-                <details class="fallback-details">
-                    <summary class="fallback-summary">Linux System Shortcut</summary>
-                    <p class="hint" style="margin-top: 12px;">This is the main Linux shortcut method. Copy this command into your desktop's custom shortcut settings. One press starts recording, and the next press stops.</p>
-                    <div class="form-control" style="margin-top: 12px;">
-                        <div class="flex-row">
-                            <div class="input-wrapper">
-                                <input type="text" id="linuxPressCommand" readonly>
-                            </div>
-                            <button onclick="copyLinuxPressCommand()">Copy</button>
-                        </div>
-                    </div>
-                    <p class="hint" style="margin-top: 10px;">GNOME: Settings &gt; Keyboard &gt; Custom Shortcuts &gt; Add a shortcut with the copied command.</p>
-                    <p class="hint">KDE: System Settings &gt; Shortcuts &gt; Command/URL &gt; Add a shortcut with the copied command.</p>
-                </details>
-            </div>
 
             <!-- Microphone -->
             <div class="section">
@@ -421,35 +449,32 @@
             if (!el || !status) return;
 
             const ready = !!status.ready;
-            el.style.display = 'block';
-            el.style.background = ready ? 'var(--green-dim)' : 'var(--red-dim)';
-            el.style.color = ready ? 'var(--green)' : 'var(--red)';
-            el.style.border = ready ? '1px solid rgba(61, 186, 110, 0.25)' : '1px solid rgba(224, 82, 82, 0.25)';
-            el.innerHTML = '';
+            const icon = document.getElementById('linuxTypingStepIcon');
+            const setupButton = document.getElementById('linuxSetupButton');
+            const commandsDetails = document.getElementById('linuxCommandsDetails');
+            const commands = document.getElementById('linuxSetupCommands');
+            const distro = document.getElementById('linuxDistroBadge');
 
-            const title = document.createElement('div');
-            title.style.fontWeight = '600';
-            title.textContent = ready ? 'Direct typing ready' : 'Direct typing needs ydotool setup';
-            el.appendChild(title);
+            el.textContent = status.action_message || status.message || '';
+            el.className = 'setup-step-message ' + (ready ? 'status-ready' : 'status-needs-action');
+            if (icon) {
+                icon.textContent = ready ? '✓' : '1';
+                icon.className = 'setup-step-icon ' + (ready ? 'step-ready' : 'step-needs-action');
+            }
+            if (distro) distro.textContent = status.distro || 'Linux';
 
-            const message = document.createElement('div');
-            message.style.marginTop = '4px';
-            message.textContent = status.message || '';
-            el.appendChild(message);
+            const needsInstall = status.issue === 'not_installed' || status.issue === 'daemon_missing';
+            if (setupButton) {
+                setupButton.style.display = ready || needsInstall ? 'none' : 'inline-flex';
+                setupButton.disabled = false;
+                setupButton.textContent = 'Set up direct typing';
+            }
 
-            if (!ready && Array.isArray(status.setup_commands) && status.setup_commands.length) {
-                const pre = document.createElement('pre');
-                pre.style.whiteSpace = 'pre-wrap';
-                pre.style.margin = '8px 0 0';
-                pre.style.color = 'inherit';
-                pre.textContent = status.setup_commands.join('\n');
-                el.appendChild(pre);
-
-                const restart = document.createElement('div');
-                restart.style.marginTop = '8px';
-                restart.style.fontWeight = '600';
-                restart.textContent = 'A restart is not normally needed. Log out and back in only if the ydotool service still cannot access /dev/uinput.';
-                el.appendChild(restart);
+            const setupCommands = Array.isArray(status.setup_commands) ? status.setup_commands.filter(Boolean) : [];
+            if (commandsDetails && commands) {
+                commandsDetails.style.display = setupCommands.length ? 'block' : 'none';
+                commands.textContent = setupCommands.join('\n');
+                commandsDetails.open = needsInstall;
             }
         }
 
@@ -476,21 +501,16 @@
                 linuxShortcutMode = !!settings.linux_press_mode;
                 if (settings.linux_press_mode) {
                     const shortcutSection = document.getElementById('shortcutSection');
-                    const ydotoolSection = document.getElementById('linuxYdotoolSection');
-                    const fallbackSection = document.getElementById('linuxFallbackSection');
+                    const setupGroup = document.getElementById('linuxSetupGroup');
                     const cmdInput = document.getElementById('linuxPressCommand');
 
                     if (shortcutSection) shortcutSection.style.display = 'none';
-                    if (ydotoolSection) ydotoolSection.style.display = 'block';
-                    if (fallbackSection) fallbackSection.style.display = 'block';
+                    if (setupGroup) setupGroup.style.display = 'block';
 
                     if (cmdInput) {
-                        // Show just the executable name with quotes and the toggle flag
                         const fullCommand = settings.linux_press_command || '';
-                        const match = fullCommand.match(/^'[^']*' (--action=toggle)$/);
-                        const togglePart = match ? "'wisp-open' " + match[1] : "'wisp-open' --action=toggle";
-                        cmdInput.value = togglePart;
-                        window._linuxFullCommand = togglePart;
+                        cmdInput.value = fullCommand;
+                        window._linuxFullCommand = fullCommand;
                     }
 
                     renderLinuxYdotoolStatus(settings.linux_ydotool_status);
@@ -579,6 +599,44 @@
                 showSaveStatus('Command copied');
             } catch (err) {
                 console.error('Failed to copy Linux command:', err);
+            }
+        };
+
+        window.refreshLinuxSetup = async function () {
+            const button = document.querySelector('[onclick="refreshLinuxSetup()"]');
+            if (button) {
+                button.disabled = true;
+                button.textContent = 'Checking…';
+            }
+            try {
+                const settings = await window.go.main.App.GetSettings();
+                renderLinuxYdotoolStatus(settings.linux_ydotool_status);
+            } catch (err) {
+                console.error('Failed to refresh Linux setup:', err);
+                showSaveStatus('Could not check direct typing');
+            } finally {
+                if (button) {
+                    button.disabled = false;
+                    button.textContent = 'Check again';
+                }
+            }
+        };
+
+        window.setupLinuxDirectTyping = async function () {
+            const button = document.getElementById('linuxSetupButton');
+            if (!button) return;
+            button.disabled = true;
+            button.textContent = 'Setting up…';
+            try {
+                const status = await window.go.main.App.SetupLinuxDirectTyping();
+                renderLinuxYdotoolStatus(status);
+                if (status.ready) showSaveStatus('Direct typing is ready');
+            } catch (err) {
+                console.error('Linux direct typing setup failed:', err);
+                showSaveStatus('Setup failed — see the terminal command');
+                await window.refreshLinuxSetup();
+            } finally {
+                button.disabled = false;
             }
         };
 

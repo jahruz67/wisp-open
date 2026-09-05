@@ -87,18 +87,9 @@ func typeLinuxTextWithYdotool(text string) error {
 }
 
 func getYdotoolCommand() (string, string, error) {
-	path, err := exec.LookPath("ydotool")
+	path, err := findLinuxCommand("ydotool")
 	if err != nil {
-		for _, candidate := range []string{"/usr/local/bin/ydotool", "/usr/bin/ydotool"} {
-			if info, statErr := os.Stat(candidate); statErr == nil && !info.IsDir() && info.Mode()&0111 != 0 {
-				path = candidate
-				err = nil
-				break
-			}
-		}
-		if err != nil {
-			return "", "", errors.New("ydotool not found; install ydotool and start its user service")
-		}
+		return "", "", errors.New("ydotool not found; install ydotool and start its service")
 	}
 
 	socketPath, err := getYdotoolSocketPath()
@@ -110,47 +101,288 @@ func getYdotoolCommand() (string, string, error) {
 }
 
 func linuxYdotoolStatus() map[string]interface{} {
+	distroID, distroName, distroLike := linuxDistribution()
 	status := map[string]interface{}{
-		"ready":       false,
-		"installed":   false,
-		"socket":      false,
-		"socket_path": "",
-		"message":     "",
-		"setup_commands": []string{
-			"# Install ydotool with your package manager, for example:",
-			"sudo apt install ydotool    # Debian/Ubuntu",
-			"sudo dnf install ydotool    # Fedora",
-			"sudo pacman -S ydotool      # Arch",
-			"# Distribution packages normally provide the uinput rule and service:",
-			"systemctl --user enable --now ydotool.service",
-			"# If the socket is still missing, log out and back in, then run:",
-			"systemctl --user restart ydotool.service",
-		},
+		"ready":            false,
+		"installed":        false,
+		"daemon_installed": false,
+		"socket":           false,
+		"socket_path":      "",
+		"issue":            "not_installed",
+		"message":          "",
+		"distro":           distroName,
+		"setup_commands":   []string{},
 	}
 
-	path, err := exec.LookPath("ydotool")
+	_, err := findLinuxCommand("ydotool")
 	if err != nil {
-		status["message"] = "ydotool is not installed."
+		status["message"] = "The direct-typing helper is not installed."
+		status["setup_commands"] = []string{linuxInstallYdotoolCommand(distroID, distroLike)}
 		return status
 	}
 	status["installed"] = true
 
+	if _, err := findLinuxCommand("ydotoold"); err != nil {
+		status["issue"] = "daemon_missing"
+		status["message"] = "ydotool is installed, but its background service is missing."
+		status["setup_commands"] = linuxDaemonInstallCommands(distroID, distroLike)
+		return status
+	}
+	status["daemon_installed"] = true
+
 	socketPath, err := getYdotoolSocketPath()
 	if err != nil {
-		status["message"] = err.Error()
+		status["issue"] = "service_inactive"
+		status["message"] = linuxYdotoolServiceMessage()
+		status["setup_commands"] = linuxYdotoolServiceCommands()
 		return status
 	}
 	status["socket"] = true
 	status["socket_path"] = socketPath
 
-	if err := runLinuxInputCommand(path, []string{"key", "-d", "1", "0"}, "", 800*time.Millisecond, socketPath); err != nil {
-		status["message"] = "ydotool is installed, but the daemon test failed: " + err.Error()
+	// Exercise the same client/server path used for insertion, with empty input
+	// so the readiness check never types a character into the user's window.
+	if err := typeLinuxTextWithYdotool(""); err != nil {
+		status["issue"] = "daemon_unavailable"
+		status["message"] = "The ydotool socket exists, but the app cannot use it: " + err.Error()
+		status["setup_commands"] = linuxYdotoolServiceCommands()
 		return status
 	}
 
 	status["ready"] = true
-	status["message"] = "ydotool is ready for direct typing."
+	status["issue"] = "ready"
+	status["message"] = "Transcriptions can be typed into other apps."
 	return status
+}
+
+// SetupLinuxDirectTyping starts the service supplied by the WIS package or by
+// the distribution. A system service (Fedora) is started through polkit only
+// after the user explicitly clicks the setup button.
+func (a *App) SetupLinuxDirectTyping() map[string]interface{} {
+	status := linuxYdotoolStatus()
+	if ready, _ := status["ready"].(bool); ready {
+		return status
+	}
+	if installed, _ := status["installed"].(bool); !installed {
+		status["action_message"] = "Install the package shown below, then click Check again."
+		return status
+	}
+	if daemonInstalled, _ := status["daemon_installed"].(bool); !daemonInstalled {
+		status["action_message"] = "Install the daemon package shown below, then click Check again."
+		return status
+	}
+
+	if err := startLinuxDirectTypingService(true); err != nil {
+		status = linuxYdotoolStatus()
+		status["action_message"] = err.Error()
+		return status
+	}
+	time.Sleep(300 * time.Millisecond)
+	status = linuxYdotoolStatus()
+	if ready, _ := status["ready"].(bool); ready {
+		status["action_message"] = "Direct typing is set up."
+	}
+	return status
+}
+
+// startLinuxDirectTypingService is also called during startup. Automatic
+// startup only touches unprivileged user services; allowPolkit is reserved for
+// the explicit setup button.
+func startLinuxDirectTypingService(allowPolkit bool) error {
+	if _, err := findLinuxCommand("ydotool"); err != nil {
+		return errors.New("ydotool is not installed yet")
+	}
+	if _, err := findLinuxCommand("ydotoold"); err != nil {
+		return errors.New("the ydotoold daemon is not installed yet")
+	}
+	if linuxYdotoolConnectionReady() {
+		return nil
+	}
+	if _, err := exec.LookPath("systemctl"); err != nil {
+		return errors.New("systemd is not available; start ydotoold using your distribution's service manager")
+	}
+
+	_ = runSystemctl(2*time.Second, "--user", "daemon-reload")
+	for _, service := range []string{"wis-free-v3-ydotool.service", "ydotool.service", "ydotoold.service"} {
+		if !systemdUnitExists("--user", service) {
+			continue
+		}
+		args := []string{"--user", "start", service}
+		if service != "wis-free-v3-ydotool.service" {
+			args = []string{"--user", "enable", "--now", service}
+		}
+		if err := runSystemctl(15*time.Second, args...); err == nil {
+			time.Sleep(200 * time.Millisecond)
+			if linuxYdotoolConnectionReady() {
+				return nil
+			}
+		}
+	}
+
+	for _, service := range []string{"ydotool.service", "ydotoold.service"} {
+		if !systemdUnitExists("", service) {
+			continue
+		}
+		if systemdUnitActive("", service) {
+			return fmt.Errorf("the system service %s is running, but its socket is not usable by this account", service)
+		}
+		if !allowPolkit {
+			return fmt.Errorf("the system service %s is installed but stopped", service)
+		}
+		pkexec, err := exec.LookPath("pkexec")
+		if err != nil {
+			return fmt.Errorf("run `sudo systemctl enable --now %s` in a terminal", service)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		cmd := exec.CommandContext(ctx, pkexec, "systemctl", "enable", "--now", service)
+		out, runErr := cmd.CombinedOutput()
+		cancel()
+		if runErr == nil {
+			time.Sleep(200 * time.Millisecond)
+			if linuxYdotoolConnectionReady() {
+				return nil
+			}
+			return fmt.Errorf("%s started, but its socket is not usable by this account", service)
+		}
+		msg := strings.TrimSpace(string(out))
+		if msg == "" {
+			msg = runErr.Error()
+		}
+		return fmt.Errorf("could not start %s: %s", service, msg)
+	}
+
+	return errors.New("no ydotool service unit was found; use the command shown below")
+}
+
+func linuxYdotoolConnectionReady() bool {
+	return typeLinuxTextWithYdotool("") == nil
+}
+
+func findLinuxCommand(name string) (string, error) {
+	if path, err := exec.LookPath(name); err == nil {
+		return path, nil
+	}
+	for _, dir := range []string{"/usr/bin", "/usr/local/bin", "/bin"} {
+		candidate := filepath.Join(dir, name)
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() && info.Mode()&0111 != 0 {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("%s was not found", name)
+}
+
+func runSystemctl(timeout time.Duration, args ...string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "systemctl", args...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		msg := strings.TrimSpace(string(out))
+		if msg != "" {
+			return fmt.Errorf("%w: %s", err, msg)
+		}
+		return err
+	}
+	return nil
+}
+
+func systemdUnitExists(scope, service string) bool {
+	args := []string{}
+	if scope != "" {
+		args = append(args, scope)
+	}
+	args = append(args, "cat", service)
+	return runSystemctl(750*time.Millisecond, args...) == nil
+}
+
+func systemdUnitActive(scope, service string) bool {
+	args := []string{}
+	if scope != "" {
+		args = append(args, scope)
+	}
+	args = append(args, "is-active", "--quiet", service)
+	return runSystemctl(750*time.Millisecond, args...) == nil
+}
+
+func linuxYdotoolServiceMessage() string {
+	for _, service := range []string{"wis-free-v3-ydotool.service", "ydotool.service", "ydotoold.service"} {
+		if systemdUnitExists("--user", service) {
+			if systemdUnitActive("--user", service) {
+				return "The user service is running, but its socket is not available yet."
+			}
+			return "The direct-typing service is installed but not running."
+		}
+	}
+	for _, service := range []string{"ydotool.service", "ydotoold.service"} {
+		if systemdUnitExists("", service) {
+			if systemdUnitActive("", service) {
+				return "The system service is running, but its socket is not accessible."
+			}
+			return "The direct-typing system service is installed but not running."
+		}
+	}
+	return "ydotool is installed, but no running service was detected."
+}
+
+func linuxYdotoolServiceCommands() []string {
+	for _, service := range []string{"wis-free-v3-ydotool.service", "ydotool.service", "ydotoold.service"} {
+		if systemdUnitExists("--user", service) {
+			return []string{"systemctl --user start " + service, "systemctl --user status " + service}
+		}
+	}
+	for _, service := range []string{"ydotool.service", "ydotoold.service"} {
+		if systemdUnitExists("", service) {
+			return []string{"sudo systemctl enable --now " + service, "systemctl status " + service}
+		}
+	}
+	return []string{"systemctl --user enable --now ydotool.service"}
+}
+
+func linuxDistribution() (id, name, like string) {
+	id, name = "linux", "Linux"
+	data, err := os.ReadFile("/etc/os-release")
+	if err != nil {
+		return id, name, ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		value = strings.Trim(strings.TrimSpace(value), "\"")
+		switch key {
+		case "ID":
+			id = strings.ToLower(value)
+		case "PRETTY_NAME":
+			name = value
+		case "ID_LIKE":
+			like = strings.ToLower(value)
+		}
+	}
+	return id, name, like
+}
+
+func linuxInstallYdotoolCommand(id, like string) string {
+	family := id + " " + like
+	switch {
+	case strings.Contains(family, "debian"), strings.Contains(family, "ubuntu"):
+		return "sudo apt install ydotool"
+	case strings.Contains(family, "fedora"), strings.Contains(family, "rhel"), strings.Contains(family, "centos"):
+		return "sudo dnf install ydotool"
+	case strings.Contains(family, "arch"), strings.Contains(family, "manjaro"):
+		return "sudo pacman -S ydotool"
+	case strings.Contains(family, "suse"):
+		return "sudo zypper install ydotool"
+	default:
+		return "Install ydotool with your distribution's package manager."
+	}
+}
+
+func linuxDaemonInstallCommands(id, like string) []string {
+	family := id + " " + like
+	if strings.Contains(family, "debian") || strings.Contains(family, "ubuntu") {
+		return []string{"sudo apt install ydotoold"}
+	}
+	return []string{linuxInstallYdotoolCommand(id, like)}
 }
 
 func getYdotoolSocketPath() (string, error) {

@@ -93,6 +93,12 @@ func (a *App) startup(ctx context.Context) {
 	a.startupHeadless()
 	a.startLinuxPressDaemon()
 
+	// A normal Linux launcher click should always open Settings. Autostart and
+	// shortcut helper launches explicitly request background mode instead.
+	if runtime.GOOS == "linux" && initialAction == "" && !startInBackground {
+		wailsruntime.WindowShow(ctx)
+	}
+
 	// When the user launches the app again while it is already running (tray-only),
 	// the second process signals us here so the settings window becomes visible.
 	go func() {
@@ -671,6 +677,11 @@ func (a *App) startupHeadless() {
 		a.hotkeyListener = hotkey.NewListener(a.config.Shortcut, a.StartRecording, a.StopRecording)
 		a.hotkeyListener.Start()
 	} else {
+		// Packaged Linux installs ship a user service. Starting it here makes a
+		// normal first launch ready without asking users to learn systemd.
+		if err := startLinuxDirectTypingService(false); err != nil {
+			logger.Info("Linux direct-typing service was not auto-started: %v", err)
+		}
 		logger.Info("Linux shortcut setup uses the command shown in Settings; configure it in GNOME/KDE custom shortcuts")
 	}
 

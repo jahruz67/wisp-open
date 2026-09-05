@@ -17,3 +17,7 @@ func linuxYdotoolStatus() map[string]interface{} {
 		"message":     "ydotool is only used on Linux.",
 	}
 }
+
+func startLinuxDirectTypingService(bool) error {
+	return nil
+}

@@ -1,0 +1,2 @@
+# Allow the active desktop user to run WIS Free V3's ydotoold user service.
+KERNEL=="uinput", SUBSYSTEM=="misc", TAG+="uaccess", OPTIONS+="static_node=uinput"

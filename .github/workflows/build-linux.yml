@@ -47,6 +47,23 @@ jobs:
       - name: Package .deb and .rpm
         run: bash scripts/package-linux.sh
 
+      - name: Verify Linux onboarding payload
+        run: |
+          deb_package=$(find dist/packages -maxdepth 1 -name '*.deb' -print -quit)
+          rpm_package=$(find dist/packages -maxdepth 1 -name '*.rpm' -print -quit)
+
+          dpkg-deb --field "$deb_package" Depends | grep -q 'ydotool'
+          dpkg-deb --contents "$deb_package" | grep -q 'wis-free-v3-ydotool.service'
+          dpkg-deb --contents "$deb_package" | grep -q '80-wis-free-v3-uinput.rules'
+
+          rpm -qp --requires "$rpm_package" | grep -q 'ydotool'
+          rpm -qlp "$rpm_package" | grep -q 'wis-free-v3-ydotool.service'
+          rpm -qlp "$rpm_package" | grep -q '80-wis-free-v3-uinput.rules'
+          if rpm -qp --requires "$rpm_package" | grep -Eq '^(gtk3|alsa-lib|webkit2gtk4\.1|libayatana-appindicator-gtk3)$'; then
+            echo 'RPM contains Fedora-specific runtime package names instead of portable ABI dependencies.' >&2
+            exit 1
+          fi
+
       - name: Upload .deb package
         uses: actions/upload-artifact@v4
         with:

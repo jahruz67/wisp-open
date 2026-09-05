@@ -43,6 +43,7 @@ var instanceLock *os.File
 var AppVersion = "dev"
 
 var initialAction string
+var startInBackground bool
 
 func main() {
 	// systray's package init calls runtime.LockOSThread() on the program's startup
@@ -53,6 +54,10 @@ func main() {
 	// If we are being used as a helper command (e.g. GNOME custom shortcut),
 	// signal the running instance and exit.
 	for _, arg := range os.Args[1:] {
+		if arg == "--background" {
+			startInBackground = true
+			continue
+		}
 		if strings.HasPrefix(arg, "--action=") {
 			action := strings.TrimPrefix(arg, "--action=")
 			initialAction = action

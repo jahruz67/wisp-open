@@ -198,9 +198,14 @@ mkdir -p "$WORK_DIR/root/usr/share/applications"
 mkdir -p "$WORK_DIR/root/usr/share/pixmaps"
 mkdir -p "$WORK_DIR/root/usr/share/metainfo"
 mkdir -p "$WORK_DIR/root/usr/share/doc/$APP_NAME"
+mkdir -p "$WORK_DIR/root/usr/share/doc/$APP_NAME/docs"
+mkdir -p "$WORK_DIR/root/usr/lib/systemd/user"
+mkdir -p "$WORK_DIR/root/usr/lib/udev/rules.d"
 mkdir -p "$DIST_DIR"
 
 install -m 0755 "$EXECUTABLE" "$WORK_DIR/root/usr/bin/$APP_NAME"
+install -m 0644 "build/linux/$APP_NAME-ydotool.service" "$WORK_DIR/root/usr/lib/systemd/user/$APP_NAME-ydotool.service"
+install -m 0644 "build/linux/80-$APP_NAME-uinput.rules" "$WORK_DIR/root/usr/lib/udev/rules.d/80-$APP_NAME-uinput.rules"
 
 if [ -f "build/appicon.png" ]; then
     install -m 0644 "build/appicon.png" "$WORK_DIR/root/usr/share/pixmaps/$APP_NAME.png"
@@ -253,6 +258,9 @@ EOF
 if [ -f README.md ]; then
     install -m 0644 README.md "$WORK_DIR/root/usr/share/doc/$APP_NAME/README.md"
 fi
+if [ -f docs/linux-installation.md ]; then
+    install -m 0644 docs/linux-installation.md "$WORK_DIR/root/usr/share/doc/$APP_NAME/docs/linux-installation.md"
+fi
 
 if [ "$BUILD_DEB" = true ]; then
 echo "[4/5] Building .deb package..."
@@ -270,11 +278,10 @@ Priority: optional
 Architecture: $ARCH_DEB
 Maintainer: $MAINTAINER
 Installed-Size: $INSTALLED_SIZE
-Depends: libgtk-3-0, $WEBKIT_DEB_DEP, libasound2, $APPINDICATOR_DEB_DEP
-Recommends: ydotool
+Depends: libgtk-3-0, $WEBKIT_DEB_DEP, libasound2, $APPINDICATOR_DEB_DEP, ydotool, ydotoold | ydotool (>= 1.0.0)
 Description: $COMMENT
  WIS Free V3 is a desktop voice dictation app built with Go and Wails.
- On Wayland, install ydotool for direct keyboard injection.
+ The package includes the integration needed to start ydotool for direct typing.
 EOF
 
 cat > "$DEB_ROOT/DEBIAN/postinst" <<'EOF'
@@ -286,6 +293,10 @@ fi
 if command -v appstreamcli >/dev/null 2>&1; then
     appstreamcli refresh-cache --force >/dev/null 2>&1 || true
 fi
+if command -v udevadm >/dev/null 2>&1; then
+    udevadm control --reload-rules >/dev/null 2>&1 || true
+    udevadm trigger --subsystem-match=misc >/dev/null 2>&1 || true
+fi
 exit 0
 EOF
 cat > "$DEB_ROOT/DEBIAN/postrm" <<'EOF'
@@ -296,6 +307,9 @@ if command -v update-desktop-database >/dev/null 2>&1; then
 fi
 if command -v appstreamcli >/dev/null 2>&1; then
     appstreamcli refresh-cache --force >/dev/null 2>&1 || true
+fi
+if command -v udevadm >/dev/null 2>&1; then
+    udevadm control --reload-rules >/dev/null 2>&1 || true
 fi
 exit 0
 EOF
@@ -318,16 +332,12 @@ Version:        $PKG_VERSION
 Release:        $PKG_RELEASE%{?dist}
 Summary:        $COMMENT
 License:        $LICENSE
-Requires:       gtk3
-Requires:       alsa-lib
-Requires:       webkit2gtk4.1
-Requires:       libayatana-appindicator-gtk3
-Recommends:     ydotool
+Requires:       ydotool
 Provides:       application() application($APP_NAME.desktop)
 
 %description
 WIS Free V3 is a desktop voice dictation app built with Go and Wails.
-On Wayland, install ydotool for direct keyboard injection.
+The package includes the integration needed to start ydotool for direct typing.
 
 %install
 rm -rf %{buildroot}
@@ -341,6 +351,10 @@ fi
 if command -v appstreamcli >/dev/null 2>&1; then
     appstreamcli refresh-cache --force >/dev/null 2>&1 || :
 fi
+if command -v udevadm >/dev/null 2>&1; then
+    udevadm control --reload-rules >/dev/null 2>&1 || :
+    udevadm trigger --subsystem-match=misc >/dev/null 2>&1 || :
+fi
 
 %postun
 if command -v update-desktop-database >/dev/null 2>&1; then
@@ -349,6 +363,9 @@ fi
 if command -v appstreamcli >/dev/null 2>&1; then
     appstreamcli refresh-cache --force >/dev/null 2>&1 || :
 fi
+if command -v udevadm >/dev/null 2>&1; then
+    udevadm control --reload-rules >/dev/null 2>&1 || :
+fi
 
 %files
 %attr(0755,root,root) /usr/bin/$APP_NAME
@@ -356,6 +373,9 @@ fi
 /usr/share/pixmaps/$APP_NAME.png
 /usr/share/metainfo/$APP_NAME.metainfo.xml
 /usr/share/doc/$APP_NAME/README.md
+/usr/share/doc/$APP_NAME/docs/linux-installation.md
+/usr/lib/systemd/user/$APP_NAME-ydotool.service
+/usr/lib/udev/rules.d/80-$APP_NAME-uinput.rules
 EOF
 
 rpmbuild --target "$ARCH_RPM" --define "_topdir $(pwd)/$RPM_TOP" -bb "$RPM_SPEC"

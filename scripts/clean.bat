@@ -21,7 +21,6 @@ if exist "%USERPROFILE%\AppData\Local\wails" (
 echo [3/6] Removing frontend dist and node_modules...
 if exist frontend\dist rmdir /s /q frontend\dist 2>nul
 if exist frontend\node_modules rmdir /s /q frontend\node_modules 2>nul
-if exist frontend\package-lock.json del /f /q frontend\package-lock.json 2>nul
 if exist frontend\package.json.md5 del /f /q frontend\package.json.md5 2>nul
 
 echo [4/6] Removing Wails generated JS bindings...

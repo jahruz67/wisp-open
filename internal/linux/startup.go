@@ -82,17 +82,17 @@ func getAutostartPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	
+
 	configDir := os.Getenv("XDG_CONFIG_HOME")
 	if configDir == "" {
 		configDir = filepath.Join(home, ".config")
 	}
 	autostartDir := filepath.Join(configDir, "autostart")
-	
+
 	if err := os.MkdirAll(autostartDir, 0755); err != nil {
 		return "", err
 	}
-	
+
 	return filepath.Join(autostartDir, appName+".desktop"), nil
 }
 
@@ -152,7 +152,7 @@ func AddToStartup() error {
 		}
 	}
 
-	content := fmt.Sprintf(autostartDesktopFileTemplate, desktopExecField(exePath), desktopTryExecField(exePath), iconValue, appName)
+	content := fmt.Sprintf(autostartDesktopFileTemplate, desktopExecField(exePath)+" --background", desktopTryExecField(exePath), iconValue, appName)
 	if err := os.WriteFile(autostartPath, []byte(content), 0644); err != nil {
 		return fmt.Errorf("failed to write autostart file: %w", err)
 	}
@@ -180,7 +180,7 @@ func IsInStartup() bool {
 	if err != nil {
 		return false
 	}
-	
+
 	_, err = os.Stat(autostartPath)
 	return err == nil
 }
