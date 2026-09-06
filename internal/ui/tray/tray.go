@@ -249,12 +249,20 @@ func UpdateStatus(status string) {
 		initDynamicIcons()
 		if strings.Contains(status, "Recording") {
 			systray.SetIcon(iconRecordingData)
-		} else if strings.Contains(status, "Transcribing") {
+		} else if isProcessingStatus(status) {
 			systray.SetIcon(iconTranscribingData)
 		} else {
 			systray.SetIcon(getDefaultIcon())
 		}
 	}
+}
+
+// isProcessingStatus keeps the yellow microphone visible for every phase
+// between releasing the recording shortcut and finishing text insertion.
+func isProcessingStatus(status string) bool {
+	return strings.Contains(status, "Processing") ||
+		strings.Contains(status, "Transcribing") ||
+		strings.Contains(status, "Typing")
 }
 
 // IncrementTriggerCount increments the troubleshooting counter in the tray.

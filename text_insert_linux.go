@@ -59,8 +59,12 @@ func typeLinuxTextWithYdotool(text string) error {
 	// ydotool has changed option parsing across releases. Use stdin to avoid
 	// shell quoting and argument-size issues, but keep a direct-argument
 	// fallback for older packages whose `type --file` support is incomplete.
+	// Remove the spacing between typed characters without changing how long
+	// each key is held down. Keep default-delay attempts for older versions
+	// that do not support the key-delay option.
 	attempts := [][]string{
-		{"type", "-d", "1", "--file", "-"},
+		{"type", "-d", "0", "--file", "-"},
+		{"type", "-d", "0", "-f", "-"},
 		{"type", "-f", "-"},
 		{"type", "--file", "-"},
 	}
@@ -76,10 +80,16 @@ func typeLinuxTextWithYdotool(text string) error {
 	// Do not turn a leading dash into an option. Transcriptions are normally
 	// small enough for argv and exec.Command passes this value without a shell.
 	if text != "" && !strings.HasPrefix(text, "-") && !strings.ContainsRune(text, '\x00') {
-		if err := runLinuxInputCommand(path, []string{"type", text}, "", timeout, socketPath); err == nil {
-			return nil
-		} else {
-			lastErr = err
+		directAttempts := [][]string{
+			{"type", "-d", "0", text},
+			{"type", text},
+		}
+		for _, args := range directAttempts {
+			if err := runLinuxInputCommand(path, args, "", timeout, socketPath); err == nil {
+				return nil
+			} else {
+				lastErr = err
+			}
 		}
 	}
 

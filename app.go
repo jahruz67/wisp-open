@@ -270,6 +270,12 @@ func (a *App) StopRecording() {
 	}
 	logger.Info("StopRecording triggered")
 
+	// Switch the Linux tray microphone to its yellow processing state as soon
+	// as the shortcut is released. Stopping/finalizing the recorder can take a
+	// moment, so waiting for processRecording made the red recording indicator
+	// linger after recording had already ended.
+	tray.UpdateStatus("Processing...")
+
 	// Resume media if it was playing before
 	platform.ResumeMedia(a.wasMediaPlaying)
 	if a.wasMediaPlaying {
@@ -277,6 +283,7 @@ func (a *App) StopRecording() {
 	}
 
 	if a.audioRecorder == nil {
+		tray.UpdateStatus("Ready")
 		return
 	}
 
@@ -287,6 +294,7 @@ func (a *App) StopRecording() {
 	err := a.audioRecorder.Stop()
 	if err != nil {
 		logger.Error("Failed to stop recording: %v", err)
+		tray.UpdateStatus("Ready")
 		return
 	}
 
@@ -413,6 +421,7 @@ func (a *App) processRecording(recordingPath string) {
 		wailsruntime.EventsEmit(a.ctx, "history:updated")
 	}
 
+	tray.UpdateStatus("Typing...")
 	a.insertTranscription(refinedText)
 
 	// Clean up the recording file
