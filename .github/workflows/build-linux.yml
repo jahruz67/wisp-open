@@ -216,7 +216,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
-        run: gh release upload "$RELEASE_TAG" release-assets/* --clobber
+        run: gh release upload "$RELEASE_TAG" release-assets/* --clobber --repo "$GITHUB_REPOSITORY"
 
       - name: Show release URL
         run: echo "Published ${{ steps.release.outputs.url }}"
