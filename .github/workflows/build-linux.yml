@@ -293,7 +293,24 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
-        run: gh release upload "$RELEASE_TAG" release-assets/* --clobber --repo "$GITHUB_REPOSITORY"
+        run: |
+          max_attempts=4
+          delay_seconds=10
+
+          for attempt in $(seq 1 "$max_attempts"); do
+            if gh release upload "$RELEASE_TAG" release-assets/* --clobber --repo "$GITHUB_REPOSITORY"; then
+              exit 0
+            fi
+
+            if [ "$attempt" -eq "$max_attempts" ]; then
+              echo "Release asset upload failed after $attempt attempts." >&2
+              exit 1
+            fi
+
+            echo "Release asset upload failed (attempt $attempt/$max_attempts). Retrying in ${delay_seconds}s..." >&2
+            sleep "$delay_seconds"
+            delay_seconds=$((delay_seconds * 2))
+          done
 
       - name: Show release URL
         run: echo "Published ${{ steps.release.outputs.url }}"
