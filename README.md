@@ -2,7 +2,13 @@
 
 WIS Free V3 is a desktop voice-dictation app built with Go and Wails. It records audio, transcribes it with Groq or Mistral, optionally cleans up the result, and types it into the focused application.
 
-Windows and Linux are supported. Current Linux release packages target `amd64`/`x86_64`.
+Windows and Linux are supported. An Apple Silicon-only macOS 13+ preview is also available. Current Linux release packages target `amd64`/`x86_64`.
+
+## Install on macOS
+
+Download the Apple Silicon preview DMG, drag **WIS Free V3** to Applications, and complete the in-app Microphone and Accessibility checklist. Intel Macs are not supported. The current preview is ad-hoc signed, so follow the Gatekeeper and permission notes in [macOS installation](docs/macos-installation.md).
+
+Local Whisper models are never bundled or downloaded automatically. Select the desired model manually from Settings when you want offline transcription.
 
 ## Install on Linux
 

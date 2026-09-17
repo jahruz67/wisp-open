@@ -1,10 +1,10 @@
-//go:build !linux
+//go:build windows
 
 // ============================================================
-// WINDOWS-ONLY FILE — This file compiles on Windows (and macOS)
-// but NOT on Linux. It uses robotgo for clipboard/paste which
+// WINDOWS-ONLY FILE — This file compiles on Windows
+// but NOT on Linux or macOS. It uses robotgo for clipboard/paste which
 // is Windows-specific in this app. The Linux equivalent is
-// text_insert_linux.go which uses ydotool instead.
+// text_insert_linux.go uses ydotool; macOS has a native Command-V backend.
 // ============================================================
 
 package main

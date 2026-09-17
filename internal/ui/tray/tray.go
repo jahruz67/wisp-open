@@ -1,3 +1,5 @@
+//go:build !darwin
+
 // Package tray provides system tray functionality for the application.
 // It displays an icon in the Windows notification area with a context menu.
 package tray

@@ -74,6 +74,45 @@
                 </div>
             </div>
 
+            <!-- macOS first-run checklist -->
+            <div id="macSetupGroup" style="display: none;">
+                <div class="section-group-label">macOS setup</div>
+                <div class="section linux-setup-card">
+                    <div class="linux-setup-heading">
+                        <div>
+                            <label>Finish setup</label>
+                            <p class="hint linux-setup-intro">Allow these two permissions so WIS can record and paste into the active application.</p>
+                        </div>
+                        <span class="status-badge">Apple Silicon</span>
+                    </div>
+
+                    <div class="setup-step">
+                        <div id="macMicrophoneIcon" class="setup-step-icon">1</div>
+                        <div class="setup-step-content">
+                            <div class="setup-step-title">Microphone</div>
+                            <div id="macMicrophoneStatus" class="setup-step-message">Checking microphone access…</div>
+                            <div class="setup-actions">
+                                <button id="macMicrophoneButton" onclick="requestMacPermission('microphone')">Allow microphone</button>
+                                <button class="btn-secondary" onclick="openMacPermissionSettings('microphone')">Open System Settings</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="setup-step">
+                        <div id="macAccessibilityIcon" class="setup-step-icon">2</div>
+                        <div class="setup-step-content">
+                            <div class="setup-step-title">Direct paste</div>
+                            <div id="macAccessibilityStatus" class="setup-step-message">Checking Accessibility access…</div>
+                            <p class="hint">Accessibility is used only to press ⌘V in the application you were dictating into.</p>
+                            <div class="setup-actions">
+                                <button id="macAccessibilityButton" onclick="requestMacPermission('accessibility')">Allow Accessibility</button>
+                                <button class="btn-secondary" onclick="openMacPermissionSettings('accessibility')">Open System Settings</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="section-group-label">Authentication</div>
 
             <!-- API Keys Dropdown Section -->
@@ -271,6 +310,8 @@
         let groqApiKeyVisible = false;
         let mistralApiKeyVisible = false;
         let linuxShortcutMode = false;
+        let platformOS = '';
+        let configuredWhisperModel = 'whisper-large-v3-turbo';
 
         // Toggle Groq API key visibility
         window.toggleGroqApiKey = function () {
@@ -487,10 +528,61 @@
             }
         }
 
+        function renderMacPermission(kind, state) {
+            const title = kind === 'microphone' ? 'Microphone' : 'Accessibility';
+            const status = document.getElementById(kind === 'microphone' ? 'macMicrophoneStatus' : 'macAccessibilityStatus');
+            const icon = document.getElementById(kind === 'microphone' ? 'macMicrophoneIcon' : 'macAccessibilityIcon');
+            const button = document.getElementById(kind === 'microphone' ? 'macMicrophoneButton' : 'macAccessibilityButton');
+            if (!status || !icon || !button) return;
+
+            const granted = state === 'granted';
+            icon.classList.toggle('step-ready', granted);
+            status.classList.toggle('status-ready', granted);
+            status.classList.toggle('status-needs-action', !granted);
+            status.textContent = granted
+                ? title + ' access is ready.'
+                : (state === 'not_determined'
+                    ? title + ' access has not been requested yet.'
+                    : title + ' access is required. Enable WIS Free V3 in System Settings.');
+            button.style.display = granted ? 'none' : '';
+        }
+
+        function renderMacStatus(status) {
+            if (!status || status.os !== 'darwin') return;
+            const group = document.getElementById('macSetupGroup');
+            if (group) group.style.display = status.setup_required ? 'block' : 'none';
+            renderMacPermission('microphone', status.microphone);
+            renderMacPermission('accessibility', status.accessibility);
+        }
+
+        async function refreshMacStatus() {
+            try {
+                const status = await window.go.main.App.GetPlatformStatus();
+                renderMacStatus(status);
+            } catch (err) {
+                console.error('Failed to refresh macOS permissions:', err);
+            }
+        }
+
+        window.requestMacPermission = async function (kind) {
+            await window.go.main.App.RequestPlatformPermission(kind);
+			let attempts = 0;
+			const poll = setInterval(async () => {
+				attempts += 1;
+				await refreshMacStatus();
+				if (attempts >= 30) clearInterval(poll);
+			}, 1000);
+        };
+
+        window.openMacPermissionSettings = async function (kind) {
+            await window.go.main.App.OpenPlatformPermissionSettings(kind);
+        };
+
         // Load settings on page load
         async function loadSettings() {
             try {
                 const settings = await window.go.main.App.GetSettings();
+                platformOS = settings.platform_status ? settings.platform_status.os : '';
 
                 document.getElementById('groqApiKey').value = settings.groq_api_key || '';
                 document.getElementById('mistralApiKey').value = settings.mistral_api_key || '';
@@ -515,7 +607,9 @@
 
                     renderLinuxYdotoolStatus(settings.linux_ydotool_status);
                 }
-                document.getElementById('whisperModel').value = settings.whisper_model || 'whisper-large-v3-turbo';
+                renderMacStatus(settings.platform_status);
+                configuredWhisperModel = settings.whisper_model || 'whisper-large-v3-turbo';
+                document.getElementById('whisperModel').value = configuredWhisperModel;
                 document.getElementById('aiModel').value = settings.ai_model || 'llama-3.3-70b-versatile';
                 document.getElementById('aiPrompt').value = settings.ai_prompt || '';
                 document.getElementById('language').value = settings.language || 'en';
@@ -706,6 +800,9 @@
                     localOption.textContent = '↑ Local \u2014 ' + info.model + ' (offline)';
                     localOption.style.fontWeight = 'bold';
                     whisperSelect.insertBefore(localOption, whisperSelect.firstChild);
+					if (configuredWhisperModel === localOption.value) {
+						whisperSelect.value = localOption.value;
+					}
                 } else {
                     document.getElementById('whisperNotInstalled').style.display = 'block';
                     document.getElementById('whisperInstalled').style.display = 'none';
@@ -725,7 +822,15 @@
 
             try {
                 const result = await window.go.main.App.InstallWhisper(model);
-                alert(result + '\n\nA terminal window will open showing the installation progress. This may take several minutes depending on your internet speed.');
+				if (result && result.startsWith('Error:')) {
+					throw new Error(result.substring(6).trim());
+				}
+				if (platformOS === 'darwin') {
+					btn.textContent = 'Downloading 0%';
+					showSaveStatus('Model download started');
+					return;
+				}
+				alert(result + '\n\nA terminal window will open showing the installation progress. This may take several minutes depending on your internet speed.');
 
                 // Check status after a delay
                 setTimeout(checkWhisperStatus, 5000);
@@ -781,7 +886,46 @@
                 window.runtime.EventsOn('startup:changed', function (enabled) {
                     document.getElementById('startupToggle').checked = enabled;
                 });
+
+                window.runtime.EventsOn('platform:permission-required', function () {
+                    refreshMacStatus();
+                    showSaveStatus('Permission required');
+                });
+
+                window.runtime.EventsOn('platform:paste-error', function () {
+                    refreshMacStatus();
+                    showSaveStatus('Copied — allow Accessibility to paste');
+                });
+
+				window.runtime.EventsOn('whisper:install-progress', function (progress) {
+					const btn = document.getElementById('installBtn');
+					if (!btn) return;
+					const percent = Math.max(0, Math.min(100, Math.round(progress.percent || 0)));
+					btn.disabled = true;
+					btn.textContent = 'Downloading ' + percent + '%';
+				});
+
+				window.runtime.EventsOn('whisper:install-complete', async function () {
+					const btn = document.getElementById('installBtn');
+					if (btn) {
+						btn.disabled = false;
+						btn.textContent = 'Install Offline Whisper';
+					}
+					await checkWhisperStatus();
+					showSaveStatus('Offline model installed');
+				});
+
+				window.runtime.EventsOn('whisper:install-error', function (message) {
+					const btn = document.getElementById('installBtn');
+					if (btn) {
+						btn.disabled = false;
+						btn.textContent = 'Install Offline Whisper';
+					}
+					alert('Installation failed: ' + message);
+				});
             }
+
+            window.addEventListener('focus', refreshMacStatus);
 
             // If Linux, ensure Local Whisper option is removed
             if (navigator.userAgent.toLowerCase().includes('linux')) {

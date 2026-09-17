@@ -25,19 +25,20 @@ import (
 
 // App struct
 type App struct {
-	ctx             context.Context
-	audioRecorder   *recorder.AudioRecorder
-	hotkeyListener  *hotkey.Listener
-	transcriber     *transcriber.Client
-	config          *config.Config
-	overlay         platform.Overlay
-	recordingPath   string
-	recording       int32
-	isQuitting      bool
-	wasMediaPlaying bool
-	whisperManager  *whisper.Manager
-	tempDir         string
-	transcribing    int32 // atomic: 1 = transcription in progress, prevents concurrent
+	ctx               context.Context
+	audioRecorder     *recorder.AudioRecorder
+	hotkeyListener    *hotkey.Listener
+	transcriber       *transcriber.Client
+	config            *config.Config
+	overlay           platform.Overlay
+	recordingPath     string
+	recording         int32
+	isQuitting        bool
+	wasMediaPlaying   bool
+	whisperManager    *whisper.Manager
+	tempDir           string
+	transcribing      int32 // atomic: 1 = transcription in progress, prevents concurrent
+	whisperInstalling int32 // atomic: 1 = local model download in progress
 }
 
 // NewApp creates a new App application struct
@@ -58,6 +59,7 @@ func (a *App) Version() string {
 // ShowSettings shows the settings window
 func (a *App) ShowSettings() {
 	if a.ctx != nil {
+		platform.SetSettingsWindowVisible(true)
 		wailsruntime.WindowShow(a.ctx)
 	}
 }
@@ -98,12 +100,17 @@ func (a *App) startup(ctx context.Context) {
 	if runtime.GOOS == "linux" && initialAction == "" && !startInBackground {
 		wailsruntime.WindowShow(ctx)
 	}
+	// macOS normally behaves like Windows and lives in the menu bar. The setup
+	// window is shown automatically only while required privacy access is missing.
+	if runtime.GOOS == "darwin" && initialAction == "" && !startInBackground && platform.GetStatus().SetupRequired {
+		a.ShowSettings()
+	}
 
 	// When the user launches the app again while it is already running (tray-only),
 	// the second process signals us here so the settings window becomes visible.
 	go func() {
 		for range secondInstanceWake {
-			wailsruntime.WindowShow(ctx)
+			a.ShowSettings()
 		}
 	}()
 
@@ -112,7 +119,7 @@ func (a *App) startup(ctx context.Context) {
 		for cmd := range secondInstanceCommand {
 			switch cmd {
 			case instanceCmdShow:
-				wailsruntime.WindowShow(ctx)
+				a.ShowSettings()
 			case instanceCmdStart:
 				a.StartRecording()
 			case instanceCmdStop:
@@ -134,8 +141,8 @@ func (a *App) startup(ctx context.Context) {
 
 	// Start system tray in a goroutine
 	// PLATFORM NOTE: On Linux, Wails' GTK main loop needs tray.Start() to be
-	// called synchronously (uses systray.Register). On Windows (and macOS),
-	// tray.Start() blocks for the Win32 message pump, so it must run in a goroutine.
+	// called synchronously (uses systray.Register). Windows blocks on its Win32
+	// message pump; macOS registers its native status item and returns quickly.
 	if runtime.GOOS == "linux" {
 		tray.Start(a)
 	} else {
@@ -148,7 +155,7 @@ func (a *App) startup(ctx context.Context) {
 		go func() {
 			switch action {
 			case "show":
-				wailsruntime.WindowShow(ctx)
+				a.ShowSettings()
 			case "start":
 				a.StartRecording()
 			case "stop":
@@ -167,6 +174,7 @@ func (a *App) beforeClose(ctx context.Context) (prevent bool) {
 		return false
 	}
 	wailsruntime.WindowHide(ctx)
+	platform.SetSettingsWindowVisible(false)
 	return true
 }
 
@@ -198,6 +206,15 @@ func (a *App) ToggleRecording() {
 
 // StartRecording starts the audio recording
 func (a *App) StartRecording() {
+	if runtime.GOOS == "darwin" && platform.GetStatus().Microphone != platform.PermissionGranted {
+		logger.Error("Recording blocked because macOS microphone permission is not granted")
+		tray.UpdateStatus("Microphone permission required")
+		if a.ctx != nil {
+			wailsruntime.EventsEmit(a.ctx, "platform:permission-required", "microphone")
+			a.ShowSettings()
+		}
+		return
+	}
 	if !atomic.CompareAndSwapInt32(&a.recording, 0, 1) {
 		return
 	}
@@ -470,6 +487,7 @@ func (a *App) GetSettings() map[string]interface{} {
 	conf["history"] = a.config.History
 	conf["startup"] = platform.IsInStartup()
 	conf["app_version"] = AppVersion
+	conf["platform_status"] = platform.GetStatus()
 	// PLATFORM NOTE: Linux-only settings — press daemon command and ydotool status.
 	// These are not included in the Windows build. See linux_press_daemon.go
 	// and text_insert_linux.go for the implementations.
@@ -481,6 +499,27 @@ func (a *App) GetSettings() map[string]interface{} {
 		conf["linux_ydotool_status"] = linuxYdotoolStatus()
 	}
 	return conf
+}
+
+// GetPlatformStatus returns setup and permission state for the current OS.
+func (a *App) GetPlatformStatus() platform.Status {
+	return platform.GetStatus()
+}
+
+// RequestPlatformPermission asks the OS to prompt for a supported permission.
+func (a *App) RequestPlatformPermission(kind string) string {
+	if err := platform.RequestPermission(kind); err != nil {
+		return fmt.Sprintf("Error: %v", err)
+	}
+	return "Permission request opened"
+}
+
+// OpenPlatformPermissionSettings opens the relevant macOS Privacy & Security pane.
+func (a *App) OpenPlatformPermissionSettings(kind string) string {
+	if err := platform.OpenPermissionSettings(kind); err != nil {
+		return fmt.Sprintf("Error: %v", err)
+	}
+	return "Settings opened"
 }
 
 // SaveSettings updates the configuration
@@ -772,6 +811,41 @@ func (a *App) InstallWhisper(model string) string {
 	mgr, err := whisper.NewManager()
 	if err != nil {
 		return fmt.Sprintf("Error: %v", err)
+	}
+
+	if runtime.GOOS == "darwin" {
+		if !atomic.CompareAndSwapInt32(&a.whisperInstalling, 0, 1) {
+			return "Error: another local model download is already in progress"
+		}
+		go func() {
+			defer atomic.StoreInt32(&a.whisperInstalling, 0)
+			progress := make(chan whisper.DownloadProgress, 8)
+			progressDone := make(chan struct{})
+			go func() {
+				defer close(progressDone)
+				for update := range progress {
+					if a.ctx != nil {
+						wailsruntime.EventsEmit(a.ctx, "whisper:install-progress", map[string]interface{}{
+							"model":      model,
+							"downloaded": update.Downloaded,
+							"total":      update.Total,
+							"percent":    update.Percent,
+						})
+					}
+				}
+			}()
+			err := mgr.InstallWithProgress(model, progress)
+			close(progress)
+			<-progressDone
+			if a.ctx != nil {
+				if err != nil {
+					wailsruntime.EventsEmit(a.ctx, "whisper:install-error", err.Error())
+				} else {
+					wailsruntime.EventsEmit(a.ctx, "whisper:install-complete", map[string]string{"model": model})
+				}
+			}
+		}()
+		return "Installation started"
 	}
 
 	if err := mgr.Install(model); err != nil {

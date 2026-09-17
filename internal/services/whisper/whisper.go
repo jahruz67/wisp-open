@@ -3,6 +3,7 @@ package whisper
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,19 +23,22 @@ const (
 	// Whisper.cpp Windows binary from ggml-org GitHub releases
 	// Using Vulkan build to support Intel iGPU, AMD, and Nvidia
 	whisperBinaryURL = "https://github.com/jerryshell/whisper.cpp-windows-vulkan-bin/releases/download/v1.0.0/whisper.cpp-windows-vulkan.zip"
-	// Model URLs from Hugging Face
-	modelBaseURL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
+	// Model files are pinned to an immutable Hugging Face revision so the
+	// expected byte sizes and SHA-256 digests below remain reproducible.
+	modelBaseURL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1"
 )
 
 // Available models
 var Models = map[string]struct {
 	Filename string
 	Size     string
+	Bytes    int64
+	SHA256   string
 }{
-	"tiny":   {"ggml-tiny.bin", "75 MB"},
-	"base":   {"ggml-base.bin", "150 MB"},
-	"small":  {"ggml-small.bin", "500 MB"},
-	"medium": {"ggml-medium.bin", "1.5 GB"},
+	"tiny":   {"ggml-tiny.bin", "75 MB", 77691713, "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21"},
+	"base":   {"ggml-base.bin", "150 MB", 147951465, "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe"},
+	"small":  {"ggml-small.bin", "500 MB", 487601967, "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b"},
+	"medium": {"ggml-medium.bin", "1.5 GB", 1533763059, "6c14d5adee5f86394037b4e4e8b59f1673b6cee10e3cf0b11bbdbee79c156208"},
 }
 
 // InstalledInfo stores information about the installed whisper
@@ -85,6 +89,9 @@ func (m *Manager) IsInstalled() bool {
 	if _, err := os.Stat(modelPath); os.IsNotExist(err) {
 		return false
 	}
+	if _, err := os.Stat(m.getBinaryPath()); err != nil {
+		return false
+	}
 
 	return true
 }
@@ -105,9 +112,17 @@ func (m *Manager) GetInstalledInfo() (*InstalledInfo, error) {
 	return &info, nil
 }
 
-// Install downloads and installs whisper with the specified model
-// It opens a terminal window to show progress
+// Install downloads and installs Whisper with the specified model. Windows
+// opens its existing terminal installer; macOS reports progress through the
+// channel accepted by InstallWithProgress.
 func (m *Manager) Install(model string) error {
+	return m.InstallWithProgress(model, nil)
+}
+
+// InstallWithProgress installs a user-selected local model. macOS ships the
+// engine in the application bundle, so only the explicitly selected model is
+// downloaded. No model download occurs during application installation.
+func (m *Manager) InstallWithProgress(model string, progress chan<- DownloadProgress) error {
 	if _, ok := Models[model]; !ok {
 		return fmt.Errorf("unknown model: %s", model)
 	}
@@ -117,10 +132,11 @@ func (m *Manager) Install(model string) error {
 		return fmt.Errorf("failed to create install directory: %w", err)
 	}
 
-	if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
-		// On Linux/macOS, the automatic installer is not available.
-		// Users should install whisper.cpp from their package manager or build from source.
-		return fmt.Errorf("automatic whisper installation is not available on %s; install whisper.cpp from your package manager (e.g. 'sudo apt install whisper-cpp' or 'brew install whisper-cpp') or build from source at https://github.com/ggerganov/whisper.cpp, then place the binary and model in %s", runtime.GOOS, m.installDir)
+	if runtime.GOOS == "darwin" {
+		return m.installDarwinModel(model, progress)
+	}
+	if runtime.GOOS == "linux" {
+		return fmt.Errorf("automatic whisper installation is not available on linux; install whisper.cpp from your package manager")
 	}
 
 	// Create install script (Windows batch file)
@@ -137,6 +153,78 @@ func (m *Manager) Install(model string) error {
 	}
 
 	logger.Info("Whisper installation started in terminal")
+	return nil
+}
+
+func (m *Manager) installDarwinModel(model string, progress chan<- DownloadProgress) error {
+	if runtime.GOARCH != "arm64" {
+		return fmt.Errorf("local Whisper is supported only on Apple Silicon")
+	}
+	if _, err := os.Stat(m.bundledDarwinBinary()); err != nil {
+		return fmt.Errorf("bundled Whisper engine is missing: %w", err)
+	}
+
+	modelInfo := Models[model]
+	modelURL := fmt.Sprintf("%s/%s", modelBaseURL, modelInfo.Filename)
+	tempPath := filepath.Join(m.installDir, modelInfo.Filename+".download")
+	finalPath := filepath.Join(m.installDir, modelInfo.Filename)
+	_ = os.Remove(tempPath)
+	if err := downloadFile(modelURL, tempPath, progress); err != nil {
+		_ = os.Remove(tempPath)
+		return fmt.Errorf("failed to download %s model: %w", model, err)
+	}
+	if stat, err := os.Stat(tempPath); err != nil || stat.Size() != modelInfo.Bytes {
+		_ = os.Remove(tempPath)
+		if err != nil {
+			return fmt.Errorf("failed to inspect downloaded model: %w", err)
+		}
+		return fmt.Errorf("model size mismatch: got %d bytes, want %d", stat.Size(), modelInfo.Bytes)
+	}
+
+	file, err := os.Open(tempPath)
+	if err != nil {
+		return err
+	}
+	hash := sha256.New()
+	_, copyErr := io.Copy(hash, file)
+	closeErr := file.Close()
+	if copyErr != nil {
+		_ = os.Remove(tempPath)
+		return fmt.Errorf("failed to verify model: %w", copyErr)
+	}
+	if closeErr != nil {
+		_ = os.Remove(tempPath)
+		return closeErr
+	}
+	actualHash := fmt.Sprintf("%x", hash.Sum(nil))
+	if !strings.EqualFold(actualHash, modelInfo.SHA256) {
+		_ = os.Remove(tempPath)
+		return fmt.Errorf("model checksum mismatch: got %s", actualHash)
+	}
+	if err := os.Rename(tempPath, finalPath); err != nil {
+		_ = os.Remove(tempPath)
+		return fmt.Errorf("failed to activate downloaded model: %w", err)
+	}
+
+	// Remove the previously selected model only after the replacement is valid.
+	if old, err := m.GetInstalledInfo(); err == nil && old.Model != model {
+		if oldInfo, ok := Models[old.Model]; ok {
+			_ = os.Remove(filepath.Join(m.installDir, oldInfo.Filename))
+		}
+	}
+	info := InstalledInfo{Version: "bundled-arm64", Model: model, InstallPath: m.installDir}
+	data, err := json.MarshalIndent(info, "", "    ")
+	if err != nil {
+		return err
+	}
+	infoPath := filepath.Join(m.installDir, "installed.json")
+	if err := os.WriteFile(infoPath+".tmp", data, 0600); err != nil {
+		return err
+	}
+	if err := os.Rename(infoPath+".tmp", infoPath); err != nil {
+		return err
+	}
+	logger.Info("Local Whisper %s model installed", model)
 	return nil
 }
 
@@ -371,6 +459,9 @@ func (m *Manager) Transcribe(audioPath string, language string) (string, error) 
 
 // getBinaryPath returns the path to the whisper binary
 func (m *Manager) getBinaryPath() string {
+	if runtime.GOOS == "darwin" {
+		return m.bundledDarwinBinary()
+	}
 	// whisper.cpp extracts to a Release subdirectory
 	releaseDir := filepath.Join(m.installDir, "Release")
 
@@ -409,6 +500,16 @@ func (m *Manager) getBinaryPath() string {
 		return filepath.Join(releaseDir, "main.exe")
 	}
 	return filepath.Join(releaseDir, "main")
+}
+
+func (m *Manager) bundledDarwinBinary() string {
+	executable, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	// Wails places the executable in App.app/Contents/MacOS and resources in
+	// App.app/Contents/Resources. This path also keeps development failures clear.
+	return filepath.Clean(filepath.Join(filepath.Dir(executable), "..", "Resources", "bin", "whisper-cli"))
 }
 
 // CheckOnline checks if internet is available
@@ -456,6 +557,7 @@ func downloadFile(url, dest string, progress chan<- DownloadProgress) error {
 
 	total := resp.ContentLength
 	var downloaded int64
+	lastProgress := time.Time{}
 
 	buf := make([]byte, 32*1024)
 	for {
@@ -465,12 +567,13 @@ func downloadFile(url, dest string, progress chan<- DownloadProgress) error {
 				return werr
 			}
 			downloaded += int64(n)
-			if progress != nil && total > 0 {
+			if progress != nil && total > 0 && (lastProgress.IsZero() || time.Since(lastProgress) >= 250*time.Millisecond || downloaded == total) {
 				progress <- DownloadProgress{
 					Downloaded: downloaded,
 					Total:      total,
 					Percent:    float64(downloaded) / float64(total) * 100,
 				}
+				lastProgress = time.Now()
 			}
 		}
 		if err == io.EOF {
@@ -483,4 +586,3 @@ func downloadFile(url, dest string, progress chan<- DownloadProgress) error {
 
 	return nil
 }
-

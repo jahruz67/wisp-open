@@ -134,12 +134,89 @@ jobs:
           path: build/bin/wis-free-v3.exe
           if-no-files-found: error
 
+  build-macos:
+    name: Build Apple Silicon preview
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Confirm Apple Silicon runner
+        run: test "$(uname -m)" = arm64
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install build tools
+        run: brew install cmake
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Build pinned Apple Silicon Whisper engine
+        run: |
+          git clone --depth 1 --branch v1.9.4 https://github.com/ggml-org/whisper.cpp.git build/whisper-src
+          test "$(git -C build/whisper-src rev-parse HEAD)" = 927cfce34f31707e17f2bff35c349632fb9e2c3a
+          cmake -S build/whisper-src -B build/whisper-macos \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DWHISPER_BUILD_TESTS=OFF \
+            -DWHISPER_BUILD_SERVER=OFF \
+            -DWHISPER_BUILD_EXAMPLES=ON
+          cmake --build build/whisper-macos --config Release --target whisper-cli --parallel
+
+      - name: Build and package macOS preview
+        run: bash scripts/build-macos.sh
+
+      - name: Compile macOS tests
+        run: go test -run '^$' ./...
+
+      - name: Verify ARM64 bundle and privacy metadata
+        run: |
+          file build/bin/wis-free-v3.app/Contents/MacOS/wis-free-v3 | grep -q arm64
+          file build/bin/wis-free-v3.app/Contents/Resources/bin/whisper-cli | grep -q arm64
+          plutil -lint build/bin/wis-free-v3.app/Contents/Info.plist
+          test "$(defaults read "$PWD/build/bin/wis-free-v3.app/Contents/Info" CFBundleIdentifier)" = io.github.jahruz67.wisfreev3
+          defaults read "$PWD/build/bin/wis-free-v3.app/Contents/Info" NSMicrophoneUsageDescription
+          if find build/bin/wis-free-v3.app -name 'ggml-*.bin' -print -quit | grep -q .; then
+            echo 'A local Whisper model was bundled unexpectedly' >&2
+            exit 1
+          fi
+          unexpected_deps=$(otool -L build/bin/wis-free-v3.app/Contents/Resources/bin/whisper-cli \
+            | tail -n +2 | awk '{print $1}' | grep -Ev '^(/System/Library/|/usr/lib/)' || true)
+          if [ -n "$unexpected_deps" ]; then
+            echo "whisper-cli has unexpected non-system dependencies: $unexpected_deps" >&2
+            exit 1
+          fi
+
+      - name: Upload macOS preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-apple-silicon-preview
+          path: dist/macos/*.dmg
+          if-no-files-found: error
+
   release:
     name: Publish GitHub release
-    # Linux packages are the required release output. If the optional Windows
-    # build fails, publish the Linux files now and allow a rerun to add the .exe.
-    if: always() && github.event_name != 'pull_request' && needs.build-linux.result == 'success'
-    needs: [build-linux, build-windows]
+    # Linux and Apple Silicon packages are required release outputs. Windows is
+    # optional so a rerun can repair or add the executable later.
+    if: always() && github.event_name != 'pull_request' && needs.build-linux.result == 'success' && needs.build-macos.result == 'success'
+    needs: [build-linux, build-windows, build-macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -212,7 +289,7 @@ jobs:
               }
             }
 
-      - name: Upload Debian, Fedora, and Windows files
+      - name: Upload Debian, Fedora, Windows, and macOS files
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}

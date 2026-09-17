@@ -32,6 +32,7 @@ type platformHotkey struct {
 	mu         sync.Mutex
 	registered bool
 	hkref      C.EventHotKeyRef
+	handle     cgo.Handle
 }
 
 func (hk *Hotkey) register() error {
@@ -53,9 +54,11 @@ func (hk *Hotkey) register() error {
 
 	ret := C.registerHotKey(C.int(mod), C.int(hk.key), C.uintptr_t(h), &hk.hkref)
 	if ret == C.int(-1) {
+		h.Delete()
 		return errors.New("failed to register the hotkey")
 	}
 
+	hk.handle = h
 	hk.registered = true
 	return nil
 }
@@ -70,6 +73,10 @@ func (hk *Hotkey) unregister() error {
 	ret := C.unregisterHotKey(hk.hkref)
 	if ret == C.int(-1) {
 		return errors.New("failed to unregister the current hotkey")
+	}
+	if hk.handle != 0 {
+		hk.handle.Delete()
+		hk.handle = 0
 	}
 	hk.registered = false
 	return nil

@@ -46,10 +46,12 @@ var initialAction string
 var startInBackground bool
 
 func main() {
-	// systray's package init calls runtime.LockOSThread() on the program's startup
-	// thread. Undo that so the main goroutine is not permanently bound; the tray
-	// goroutine locks itself in tray.Start instead (see internal/ui/tray/tray.go).
-	runtime.UnlockOSThread()
+	// The Windows/Linux systray backend locks the startup thread during package
+	// initialization. macOS uses our AppKit status-item backend and must leave the
+	// Wails application thread alone.
+	if runtime.GOOS != "darwin" {
+		runtime.UnlockOSThread()
+	}
 
 	// If we are being used as a helper command (e.g. GNOME custom shortcut),
 	// signal the running instance and exit.
