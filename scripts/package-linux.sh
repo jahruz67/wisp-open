@@ -71,6 +71,32 @@ require_command() {
     fi
 }
 
+run_with_retry() {
+    local max_attempts="$1"
+    local delay_seconds="$2"
+    shift 2
+
+    local attempt=1
+    local exit_code=0
+    while true; do
+        if "$@"; then
+            return 0
+        else
+            exit_code=$?
+        fi
+
+        if [ "$attempt" -ge "$max_attempts" ]; then
+            echo "[ERROR] Command failed after $attempt attempts: $*" >&2
+            return "$exit_code"
+        fi
+
+        echo "[WARN] Command failed (attempt $attempt/$max_attempts). Retrying in ${delay_seconds}s: $*" >&2
+        sleep "$delay_seconds"
+        attempt=$((attempt + 1))
+        delay_seconds=$((delay_seconds * 2))
+    done
+}
+
 require_command go
 require_command pkg-config
 require_command gcc
@@ -138,6 +164,11 @@ if ! pkg-config --exists gtk+-3.0 || ! webkit2_ok || ! pkg-config --exists alsa 
 fi
 
 echo "[2/5] Building Linux binary with Wails..."
+
+# Module proxy connections occasionally reset in CI. Populate the module cache
+# separately so transient download failures can be retried without rerunning the
+# entire Wails frontend and bindings build.
+run_with_retry 4 5 go mod download
 
 if [ -d "frontend/node_modules/.bin" ]; then
     chmod +x frontend/node_modules/.bin/* 2>/dev/null || true
