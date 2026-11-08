@@ -24,6 +24,7 @@ type platformHotkey struct {
 	registered bool
 	funcs      chan func()
 	canceled   chan struct{}
+	done       chan struct{}
 }
 
 var hotkeyId uint64 // atomic
@@ -38,15 +39,18 @@ func (hk *Hotkey) register() error {
 		return errors.New("hotkey already registered")
 	}
 
-	mod := uint8(0)
+	// Holding a shortcut must produce one activation, even if capture takes
+	// longer to start after sleep. Do not queue keyboard auto-repeat messages.
+	mod := uintptr(0x4000) // MOD_NOREPEAT
 	for _, m := range hk.mods {
-		mod = mod | uint8(m)
+		mod |= uintptr(m)
 	}
 
 	hk.hotkeyId = atomic.AddUint64(&hotkeyId, 1)
 	hk.funcs = make(chan func())
 	hk.canceled = make(chan struct{})
-	go hk.handle()
+	hk.done = make(chan struct{})
+	go hk.handle(AsyncKeyDown)
 
 	var (
 		ok   bool
@@ -60,6 +64,7 @@ func (hk *Hotkey) register() error {
 	<-done
 	if !ok {
 		close(hk.canceled)
+		<-hk.done
 		hk.mu.Unlock()
 		return err
 	}
@@ -84,7 +89,8 @@ func (hk *Hotkey) unregister() error {
 	}
 	<-done
 
-	<-hk.canceled
+	// The producer must exit before Unregister closes its event channels.
+	<-hk.done
 	hk.registered = false
 	return nil
 }
@@ -96,24 +102,34 @@ const (
 )
 
 // handle handles the hotkey event loop.
-func (hk *Hotkey) handle() {
+func (hk *Hotkey) handle(keyDown func(int) bool) {
 	// We could optimize this. So far each hotkey is served in an
 	// individual thread. If we have too many hotkeys, then a program
 	// have to create too many threads to serve them.
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
+	defer close(hk.done)
 
 	tk := time.NewTicker(time.Second / 100)
-	for range tk.C {
+	defer tk.Stop()
+	keyHeld := false
+	for {
+		select {
+		case f := <-hk.funcs:
+			f()
+			continue
+		case <-hk.canceled:
+			return
+		case <-tk.C:
+		}
+
+		if keyHeld && !keyDown(int(hk.key)) {
+			hk.keyupIn <- Event{}
+			keyHeld = false
+		}
+
 		msg := win.MSG{}
 		if !win.PeekMessage(&msg, 0, 0, 0) {
-			select {
-			case f := <-hk.funcs:
-				f()
-			case <-hk.canceled:
-				return
-			default:
-			}
 			continue
 		}
 		if !win.GetMessage(&msg, 0, 0, 0) {
@@ -122,14 +138,9 @@ func (hk *Hotkey) handle() {
 
 		switch msg.Message {
 		case wmHotkey:
-			hk.keydownIn <- Event{}
-
-			tk := time.NewTicker(time.Second / 100)
-			for range tk.C {
-				if win.GetAsyncKeyState(int(hk.key)) == 0 {
-					hk.keyupIn <- Event{}
-					break
-				}
+			if !keyHeld {
+				hk.keydownIn <- Event{}
+				keyHeld = true
 			}
 		case wmQuit:
 			return

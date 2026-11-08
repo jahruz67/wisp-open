@@ -68,16 +68,18 @@ func appDisplayName(app App) string {
 
 // onReady is called when the system tray is ready to be configured.
 func onReady(app App) {
+	statusMu.Lock()
+	defer statusMu.Unlock()
 	initDynamicIcons()
 	trayLabel = appDisplayName(app)
 
 	// Configure tray icon and tooltip
-	systray.SetIcon(getDefaultIcon())
+	systray.SetIcon(statusIcon(lastStatus))
 	systray.SetTitle(trayLabel)
-	systray.SetTooltip(buildTooltip(app))
+	systray.SetTooltip(trayLabel + " - " + lastStatus)
 
 	// Build menu structure
-	statusMenuItem = systray.AddMenuItem("Status: Ready", "Current application status")
+	statusMenuItem = systray.AddMenuItem("Status: "+lastStatus, "Current application status")
 	statusMenuItem.Disable()
 
 	if runtime.GOOS != "windows" {
@@ -159,6 +161,8 @@ func SetOnStartupChanged(fn func(bool)) {
 // This is used to keep the tray in sync when the startup option is changed
 // from the settings UI.
 func SetStartupChecked(checked bool) {
+	statusMu.Lock()
+	defer statusMu.Unlock()
 	if startupMenuItem == nil {
 		return
 	}
@@ -236,40 +240,35 @@ func icoToPNG(data []byte) ([]byte, error) {
 	return nil, fmt.Errorf("no PNG image found in ico")
 }
 
-var statusMu sync.Mutex
-var lastStatus string
-
 // UpdateStatus updates the status text displayed in the tray menu.
 func UpdateStatus(status string) {
 	statusMu.Lock()
 	defer statusMu.Unlock()
-	if statusMenuItem != nil && status != lastStatus {
-		lastStatus = status
+	lastStatus = status
+	if statusMenuItem != nil {
 		statusMenuItem.SetTitle("Status: " + status)
 		systray.SetTooltip(trayLabel + " - " + status)
 
-		initDynamicIcons()
-		if strings.Contains(status, "Recording") {
-			systray.SetIcon(iconRecordingData)
-		} else if isProcessingStatus(status) {
-			systray.SetIcon(iconTranscribingData)
-		} else {
-			systray.SetIcon(getDefaultIcon())
-		}
+		systray.SetIcon(statusIcon(status))
 	}
 }
 
-// isProcessingStatus keeps the yellow microphone visible for every phase
-// between releasing the recording shortcut and finishing text insertion.
-func isProcessingStatus(status string) bool {
-	return strings.Contains(status, "Processing") ||
-		strings.Contains(status, "Transcribing") ||
-		strings.Contains(status, "Typing")
+func statusIcon(status string) []byte {
+	initDynamicIcons()
+	if strings.Contains(status, "Recording") {
+		return iconRecordingData
+	}
+	if isProcessingStatus(status) {
+		return iconTranscribingData
+	}
+	return getDefaultIcon()
 }
 
 // IncrementTriggerCount increments the troubleshooting counter in the tray.
 func IncrementTriggerCount() {
 	count := atomic.AddInt32(&triggerCount, 1)
+	statusMu.Lock()
+	defer statusMu.Unlock()
 	if triggerCountItem != nil {
 		triggerCountItem.SetTitle(fmt.Sprintf("Shortcut detected: %d times", count))
 	}

@@ -34,14 +34,47 @@ type MicrophoneInfo struct {
 // VolumeCallback is called when new volume levels are calculated
 type VolumeCallback func(level float64)
 
+// Keep native resource ownership behind small interfaces so recovery can be
+// exercised without depending on a physical microphone or a running audio server.
+type captureDevice interface {
+	Start() error
+	Stop() error
+	Uninit()
+}
+
+type captureContext interface {
+	Devices(malgo.DeviceType) ([]malgo.DeviceInfo, error)
+	InitDevice(malgo.DeviceConfig, malgo.DeviceCallbacks) (captureDevice, error)
+	Uninit() error
+	Free()
+}
+
+type nativeContext struct {
+	*malgo.AllocatedContext
+}
+
+func (c *nativeContext) InitDevice(config malgo.DeviceConfig, callbacks malgo.DeviceCallbacks) (captureDevice, error) {
+	return malgo.InitDevice(c.Context, config, callbacks)
+}
+
+func newCaptureContext() (captureContext, error) {
+	ctx, err := malgo.InitContext(nil, malgo.ContextConfig{}, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &nativeContext{ctx}, nil
+}
+
 // AudioRecorder handles audio capture from the system microphone.
 type AudioRecorder struct {
-	ctx          *malgo.AllocatedContext
+	ctx          captureContext
+	newContext   func() (captureContext, error)
 	deviceConfig malgo.DeviceConfig
-	device       *malgo.Device
+	device       captureDevice
 	outputFile   *os.File
 	dataSize     uint32
 	isRecording  bool
+	closed       bool
 	writing      int32 // atomic: 1 = safe to write to outputFile, 0 = no longer writing
 	deviceID     *string
 	OnVolume     VolumeCallback
@@ -51,7 +84,7 @@ type AudioRecorder struct {
 // NewRecorder creates a new audio recorder instance.
 // Returns an error if the audio context cannot be initialized.
 func NewRecorder() (*AudioRecorder, error) {
-	ctx, err := malgo.InitContext(nil, malgo.ContextConfig{}, nil)
+	ctx, err := newCaptureContext()
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize audio context: %w", err)
 	}
@@ -64,6 +97,7 @@ func NewRecorder() (*AudioRecorder, error) {
 
 	return &AudioRecorder{
 		ctx:          ctx,
+		newContext:   newCaptureContext,
 		deviceConfig: deviceConfig,
 	}, nil
 }
@@ -77,7 +111,7 @@ func (r *AudioRecorder) GetMicrophones() ([]MicrophoneInfo, error) {
 		return nil, fmt.Errorf("audio context not initialized")
 	}
 
-	devices, err := r.ctx.Context.Devices(malgo.Capture)
+	devices, err := r.ctx.Devices(malgo.Capture)
 	if err != nil {
 		return nil, fmt.Errorf("failed to enumerate devices: %w", err)
 	}
@@ -126,6 +160,16 @@ func (r *AudioRecorder) Start(filename string) error {
 	if r.isRecording {
 		return fmt.Errorf("recording already in progress")
 	}
+	if r.closed {
+		return fmt.Errorf("audio recorder is closed")
+	}
+	if r.ctx == nil {
+		ctx, err := r.newContext()
+		if err != nil {
+			return fmt.Errorf("failed to initialize audio context: %w", err)
+		}
+		r.ctx = ctx
+	}
 
 	// Create output file
 	file, err := os.Create(filename)
@@ -134,64 +178,79 @@ func (r *AudioRecorder) Start(filename string) error {
 	}
 	r.outputFile = file
 	r.dataSize = 0
+	started := false
+	defer func() {
+		if !started {
+			file.Close()
+			r.outputFile = nil
+		}
+	}()
 
 	// Write placeholder WAV header
 	if err := r.writeWAVHeader(0); err != nil {
-		file.Close()
 		return fmt.Errorf("failed to write WAV header: %w", err)
 	}
 
+	// Audio services and endpoints can disappear while the app is idle (sleep,
+	// USB/Bluetooth reconnects, or an audio-server restart). Retry the same
+	// recording once with a fresh context, including when using System Default.
+	if err := r.startCapture(); err != nil {
+		logger.Info("Audio capture failed, refreshing audio context: %v", err)
+		r.closeContext()
+		ctx, contextErr := r.newContext()
+		if contextErr != nil {
+			return fmt.Errorf("failed to refresh audio context after %v: %w", err, contextErr)
+		}
+		r.ctx = ctx
+		if err := r.startCapture(); err != nil {
+			return err
+		}
+	}
+
+	r.isRecording = true
+	atomic.StoreInt32(&r.writing, 1)
+	started = true
+	logger.Info("Recording started: %s", filename)
+	return nil
+}
+
+// startCapture opens a fresh endpoint for each recording. The caller holds mu.
+func (r *AudioRecorder) startCapture() error {
 	// Determine device ID pointer
-	var targetDeviceID unsafe.Pointer
+	var targetDeviceID *malgo.DeviceID
 	if r.deviceID != nil {
-		devices, err := r.ctx.Context.Devices(malgo.Capture)
+		devices, err := r.ctx.Devices(malgo.Capture)
 		if err == nil {
 			for _, info := range devices {
 				if fmt.Sprintf("%v", info.ID) == *r.deviceID {
-					targetDeviceID = info.ID.Pointer()
+					id := info.ID
+					targetDeviceID = &id
 					break
 				}
 			}
 		}
 	}
 
-	// Check if we need to re-initialize the device
-	configChanged := false
-	if r.deviceConfig.Capture.DeviceID != targetDeviceID {
-		configChanged = true
+	config := r.deviceConfig
+	// Pin the ID only for initialization, which copies it into the native
+	// device. DeviceID.Pointer() allocates C memory that would leak each time.
+	var pin runtime.Pinner
+	if targetDeviceID != nil {
+		pin.Pin(targetDeviceID)
+		defer pin.Unpin()
 	}
-
-	if r.device != nil && configChanged {
-		logger.Info("Audio device config changed, re-initializing...")
-		r.device.Uninit()
-		r.device = nil
-	}
-
-	if r.device == nil {
-		r.deviceConfig.Capture.DeviceID = targetDeviceID
-		callbacks := malgo.DeviceCallbacks{
-			Data: r.onAudioData,
-		}
-		device, err := malgo.InitDevice(r.ctx.Context, r.deviceConfig, callbacks)
-		if err != nil {
-			file.Close()
-			return fmt.Errorf("failed to initialize audio device: %w", err)
-		}
-		r.device = device
-		logger.Info("Audio device initialized")
+	config.Capture.DeviceID = unsafe.Pointer(targetDeviceID)
+	device, err := r.ctx.InitDevice(config, malgo.DeviceCallbacks{Data: r.onAudioData})
+	if err != nil {
+		return fmt.Errorf("failed to initialize audio device: %w", err)
 	}
 
 	// Start capturing
-	if err := r.device.Start(); err != nil {
-		r.device.Uninit()
-		r.device = nil
-		file.Close()
+	if err := device.Start(); err != nil {
+		device.Uninit()
 		return fmt.Errorf("failed to start audio capture: %w", err)
 	}
-
-	r.isRecording = true
-	atomic.StoreInt32(&r.writing, 1)
-	logger.Info("Recording started: %s", filename)
+	r.device = device
 	return nil
 }
 
@@ -200,6 +259,11 @@ func (r *AudioRecorder) Stop() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	return r.stop()
+}
+
+// stop finalizes the recording and releases its endpoint. The caller holds mu.
+func (r *AudioRecorder) stop() error {
 	if !r.isRecording {
 		return nil
 	}
@@ -213,10 +277,10 @@ func (r *AudioRecorder) Stop() error {
 		if err := r.device.Stop(); err != nil {
 			logger.Error("Failed to stop audio device: %v", err)
 		}
-		if runtime.GOOS == "linux" {
-			r.device.Uninit()
-			r.device = nil
-		}
+		// Do not retain a stopped endpoint across idle periods. Its native
+		// handle may no longer be usable when the next shortcut is pressed.
+		r.device.Uninit()
+		r.device = nil
 	}
 
 	// Finalize WAV file
@@ -248,17 +312,22 @@ func (r *AudioRecorder) Cleanup() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if r.device != nil {
-		r.device.Uninit()
-		r.device = nil
-	}
+	r.stop()
+	r.closeContext()
+	r.closed = true
 
+	logger.Info("Audio recorder cleaned up")
+}
+
+// closeContext must run only after all of its devices have been uninitialized.
+func (r *AudioRecorder) closeContext() {
 	if r.ctx != nil {
+		if err := r.ctx.Uninit(); err != nil {
+			logger.Error("Failed to uninitialize audio context: %v", err)
+		}
 		r.ctx.Free()
 		r.ctx = nil
 	}
-
-	logger.Info("Audio recorder cleaned up")
 }
 
 // onAudioData is called by miniaudio when audio data is available.

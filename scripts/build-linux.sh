@@ -526,18 +526,8 @@ if [ "$INSTALL_MODE" = "system" ]; then
 
     # Absolute Exec path: some desktop environments do not put /usr/local/bin on PATH
     # for .desktop launches, so "Exec=wis-free-v3" can fail with no visible error.
-    cat << EOF > /tmp/$APP_NAME.desktop
-[Desktop Entry]
-Type=Application
-Name=WIS Free V3
-Comment=Voice Dictation App
-Exec=/usr/local/bin/$APP_NAME
-TryExec=/usr/local/bin/$APP_NAME
-Icon=$APP_NAME
-StartupWMClass=$APP_NAME
-Terminal=false
-Categories=Utility;Audio;
-EOF
+    go run ./scripts/desktop-entry --executable "/usr/local/bin/$APP_NAME" \
+        > "/tmp/$APP_NAME.desktop"
 
     sudo mv /tmp/$APP_NAME.desktop "$DESKTOP_FILE"
     sudo chmod 644 "$DESKTOP_FILE"
@@ -568,27 +558,21 @@ elif [ "$INSTALL_MODE" = "user" ]; then
     esac
 
     # Create user-local desktop file
-    DESKTOP_DIR="$HOME/.local/share/applications"
+    case "${XDG_DATA_HOME:-}" in
+        /*) LOCAL_DATA_DIR="$XDG_DATA_HOME" ;;
+        *) LOCAL_DATA_DIR="$HOME/.local/share" ;;
+    esac
+    DESKTOP_DIR="$LOCAL_DATA_DIR/applications"
     mkdir -p "$DESKTOP_DIR"
-    ICONS_DIR="$HOME/.local/share/pixmaps"
+    ICONS_DIR="$LOCAL_DATA_DIR/pixmaps"
     mkdir -p "$ICONS_DIR"
 
     if [ -f "build/appicon.png" ]; then
         cp "build/appicon.png" "$ICONS_DIR/$APP_NAME.png"
     fi
 
-    cat > "$DESKTOP_DIR/$APP_NAME.desktop" << EOF
-[Desktop Entry]
-Type=Application
-Name=WIS Free V3
-Comment=Voice Dictation App
-Exec=$LOCAL_BIN_DIR/$APP_NAME
-TryExec=$LOCAL_BIN_DIR/$APP_NAME
-Icon=$APP_NAME
-StartupWMClass=$APP_NAME
-Terminal=false
-Categories=Utility;Audio;
-EOF
+    go run ./scripts/desktop-entry --executable "$LOCAL_BIN_DIR/$APP_NAME" \
+        > "$DESKTOP_DIR/$APP_NAME.desktop"
     chmod 644 "$DESKTOP_DIR/$APP_NAME.desktop"
 
     echo ""

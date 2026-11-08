@@ -31,16 +31,17 @@ type HistoryItem struct {
 
 // Config represents the complete application configuration.
 type Config struct {
-	Version          int           `json:"version"`
-	GroqAPIKey       string        `json:"groq_api_key"`
-	MistralAPIKey    string        `json:"mistral_api_key"`
-	Shortcut         string        `json:"shortcut"`
-	WhisperModel     string        `json:"whisper_model"`
-	AIModel          string        `json:"ai_model"`
-	AIPrompt         string        `json:"ai_prompt"`
-	Language         string        `json:"language"`
-	MicrophoneDevice *int          `json:"microphone_device"`
-	History          []HistoryItem `json:"history"`
+	Version              int           `json:"version"`
+	GroqAPIKey           string        `json:"groq_api_key"`
+	MistralAPIKey        string        `json:"mistral_api_key"`
+	Shortcut             string        `json:"shortcut"`
+	LinuxShortcutEnabled bool          `json:"linux_shortcut_enabled,omitempty"`
+	WhisperModel         string        `json:"whisper_model"`
+	AIModel              string        `json:"ai_model"`
+	AIPrompt             string        `json:"ai_prompt"`
+	Language             string        `json:"language"`
+	MicrophoneDevice     *int          `json:"microphone_device"`
+	History              []HistoryItem `json:"history"`
 }
 
 const CurrentConfigVersion = 2

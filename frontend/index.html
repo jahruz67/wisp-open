@@ -30,6 +30,7 @@
                         <div>
                             <label>Finish setup</label>
                             <p class="hint linux-setup-intro">Complete these two items once, then WIS Free V3 is ready to dictate into any app.</p>
+                            <p id="linuxTrayStatus" class="hint">The tray microphone stays visible while WIS is running, even when Settings is closed.</p>
                         </div>
                         <span id="linuxDistroBadge" class="status-badge"></span>
                     </div>
@@ -53,8 +54,16 @@
                     <div class="setup-step">
                         <div class="setup-step-icon">2</div>
                         <div class="setup-step-content">
-                            <div class="setup-step-title">Recording shortcut</div>
-                            <p class="hint">Copy this exact command and assign it to a custom keyboard shortcut. Press once to start recording and again to stop.</p>
+                            <div class="setup-step-title">Hold-to-record shortcut</div>
+                            <div id="linuxShortcutStatus" class="setup-step-message">Checking the recording shortcut…</div>
+                            <p class="hint">Hold the shortcut to record (red), then release to transcribe and type (yellow). The microphone returns to white when finished.</p>
+                            <div class="setup-actions">
+                                <button id="linuxShortcutButton" onclick="setupLinuxShortcut()">Set up hold-to-record</button>
+                            </div>
+                            <p class="hint">Approve the desktop's shortcut dialog once. Your binding is restored at login when Run on System Startup is enabled. Remove any old command shortcut using the same keys.</p>
+                            <details class="fallback-details desktop-instructions">
+                                <summary class="fallback-summary">Optional toggle shortcut</summary>
+                                <p class="hint">This command and the launcher's <strong>Toggle recording</strong> action start on one press and stop on the next. They do not support hold and release. Use the setup button above for hold-to-record.</p>
                             <div class="form-control" style="margin-top: 10px;">
                                 <div class="flex-row">
                                     <div class="input-wrapper">
@@ -63,10 +72,9 @@
                                     <button onclick="copyLinuxPressCommand()">Copy command</button>
                                 </div>
                             </div>
-                            <details class="fallback-details desktop-instructions">
-                                <summary class="fallback-summary">Where to add the shortcut</summary>
                                 <p class="hint"><strong>GNOME / Ubuntu:</strong> Settings → Keyboard → View and Customize Shortcuts → Custom Shortcuts.</p>
-                                <p class="hint"><strong>KDE Plasma:</strong> System Settings → Keyboard → Shortcuts → Add New → Command or Script.</p>
+                                <p class="hint"><strong>KDE Plasma 6:</strong> System Settings → Keyboard → Shortcuts → Add New → Application → WIS Free V3, then assign a key to <strong>Toggle recording</strong>. You can also choose Command or Script and paste the command above.</p>
+                                <p class="hint"><strong>KDE Plasma 5:</strong> System Settings → Shortcuts → Custom Shortcuts → Edit → New → Global Shortcut → Command/URL, then paste the command above.</p>
                                 <p class="hint"><strong>Other desktops:</strong> Open Keyboard or Shortcuts settings and add a custom command.</p>
                             </details>
                         </div>
@@ -519,6 +527,37 @@
             }
         }
 
+        function renderLinuxShortcutStatus(status) {
+            if (!status) return;
+            const el = document.getElementById('linuxShortcutStatus');
+            const button = document.getElementById('linuxShortcutButton');
+            el.textContent = status.message || '';
+            el.className = 'setup-step-message ' + (status.ready ? 'status-ready' : 'status-needs-action');
+            button.disabled = !!status.busy;
+            button.textContent = status.busy ? 'Waiting for permission…' : (status.ready ? 'Change shortcut' : 'Set up hold-to-record');
+        }
+
+        function renderLinuxTrayStatus(status) {
+            if (!status) return;
+            const el = document.getElementById('linuxTrayStatus');
+            el.textContent = status.message || '';
+            el.className = 'hint ' + (status.ready ? '' : 'status-needs-action');
+        }
+
+        window.setupLinuxShortcut = async function () {
+            const button = document.getElementById('linuxShortcutButton');
+            button.disabled = true;
+            button.textContent = 'Waiting for permission…';
+            try {
+                renderLinuxShortcutStatus(await window.go.main.App.SetupLinuxShortcut());
+            } catch (err) {
+                console.error('Shortcut setup failed:', err);
+                showSaveStatus('Could not set up the shortcut');
+            } finally {
+                button.disabled = false;
+            }
+        };
+
         async function refreshHistoryFromBackend() {
             try {
                 const settings = await window.go.main.App.GetSettings();
@@ -606,6 +645,8 @@
                     }
 
                     renderLinuxYdotoolStatus(settings.linux_ydotool_status);
+                    renderLinuxShortcutStatus(settings.linux_shortcut_status);
+                    renderLinuxTrayStatus(settings.linux_tray_status);
                 }
                 renderMacStatus(settings.platform_status);
                 configuredWhisperModel = settings.whisper_model || 'whisper-large-v3-turbo';
@@ -705,6 +746,7 @@
             try {
                 const settings = await window.go.main.App.GetSettings();
                 renderLinuxYdotoolStatus(settings.linux_ydotool_status);
+                renderLinuxTrayStatus(settings.linux_tray_status);
             } catch (err) {
                 console.error('Failed to refresh Linux setup:', err);
                 showSaveStatus('Could not check direct typing');
@@ -881,6 +923,8 @@
                 window.runtime.EventsOn('history:updated', function () {
                     refreshHistoryFromBackend();
                 });
+
+                window.runtime.EventsOn('linux:shortcut-status', renderLinuxShortcutStatus);
 
                 // Keep the startup checkbox in sync when toggled from the tray menu
                 window.runtime.EventsOn('startup:changed', function (enabled) {

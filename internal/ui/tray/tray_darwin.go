@@ -87,6 +87,9 @@ func withIcon(data []byte, fn func(unsafe.Pointer, C.int)) {
 }
 
 func UpdateStatus(status string) {
+	statusMu.Lock()
+	lastStatus = status
+	statusMu.Unlock()
 	data := iconData
 	templateIcon := true
 	if strings.Contains(status, "Recording") {
@@ -101,12 +104,6 @@ func UpdateStatus(status string) {
 	withIcon(data, func(ptr unsafe.Pointer, length C.int) {
 		C.wis_tray_set_status(cStatus, ptr, length, C.bool(templateIcon))
 	})
-}
-
-func isProcessingStatus(status string) bool {
-	return strings.Contains(status, "Processing") ||
-		strings.Contains(status, "Transcribing") ||
-		strings.Contains(status, "Typing")
 }
 
 func IncrementTriggerCount() {

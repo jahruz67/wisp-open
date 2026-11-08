@@ -4,7 +4,6 @@ package hotkey
 import (
 	"runtime"
 	"sync"
-	"time"
 
 	"wis-free-v3/internal/logger"
 	xhk "wis-free-v3/internal/xhotkey"
@@ -175,11 +174,15 @@ func (l *Listener) eventLoop(hk *xhk.Hotkey) {
 	l.mu.Unlock()
 	defer close(done)
 
+	l.runEventLoop(hk.Keydown(), hk.Keyup())
+}
+
+func (l *Listener) runEventLoop(keydown, keyup <-chan xhk.Event) {
 	var isRecording bool
 
 	for {
 		select {
-		case _, ok := <-hk.Keydown():
+		case _, ok := <-keydown:
 			if !ok {
 				return // Hotkey was unregistered
 			}
@@ -188,43 +191,18 @@ func (l *Listener) eventLoop(hk *xhk.Hotkey) {
 				l.startCallback()
 				isRecording = true
 			} else {
-				// We received a second Keydown while already recording.
-				// If Wayland doesn't send Deactivated (Keyup), this acts as a Toggle fallback.
-				select {
-				case <-hk.Keyup():
-					// Out-of-order auto-repeat. Ignore both.
-				case <-time.After(20 * time.Millisecond):
-					// Genuine second press. Toggle off.
-					logger.Info("Shortcut activated again: toggling recording (Wayland toggle fallback)")
-					if l.stopCallback != nil {
-						l.stopCallback()
-					} else {
-						l.startCallback()
-					}
-					isRecording = false
-				}
+				// Repeated activation while held never toggles a recording off.
+				continue
 			}
 
-		case _, ok := <-hk.Keyup():
+		case _, ok := <-keyup:
 			if !ok {
 				return // Hotkey was unregistered
 			}
 			if isRecording {
-				// X11 AutoRepeat Debounce logic
-				// Wait a tiny fraction of a second. If we get a Keydown during this window,
-				// it's an auto-repeat from holding the key, so we ignore both the Keyup and Keydown.
-				select {
-				case _, downOk := <-hk.Keydown():
-					if !downOk {
-						return
-					}
-					// AutoRepeat detected, skip this release!
-				case <-time.After(50 * time.Millisecond):
-					// Key was genuinely physically released
-					logger.Info("Shortcut released: stopping recording")
-					l.stopCallback()
-					isRecording = false
-				}
+				logger.Info("Shortcut released: stopping recording")
+				l.stopCallback()
+				isRecording = false
 			}
 		}
 	}
