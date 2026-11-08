@@ -16,7 +16,7 @@ func TestApplicationCommands(t *testing.T) {
 		{"spaces and apostrophe", "/home/Test User/WIS's app", `"/home/Test User/WIS's app"`},
 		{"shell characters without spaces", "/home/$USER/app`;&()", `"/home/\\$USER/app\\` + "`" + `;&()"`},
 		{"quotes and backslashes", "/home/test/\"WIS\\app", `"/home/test/\\"WIS\\\\app"`},
-		{"field codes", "/home/100%/app%f", `"/home/100%%/app%%f"`},
+		{"field codes", "/home/100%/app%f", `"/bin/sh" "-c" "exec \\"\\$@\\"" "--" "/home/100%%/app%%f"`},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

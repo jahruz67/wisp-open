@@ -30,7 +30,7 @@ Exec=%s --action=toggle
 // Application includes an action Plasma can expose in System Settings >
 // Keyboard > Shortcuts. No default key binding is claimed on the user's behalf.
 func Application(executable, icon string) string {
-	command := execArgument(executable)
+	command := launcherCommand(executable)
 	return fmt.Sprintf(applicationTemplate, command, stringValue(executable), stringValue(icon), command)
 }
 
@@ -47,7 +47,25 @@ StartupWMClass=wis-free-v3
 StartupNotify=false
 Terminal=false
 X-GNOME-Autostart-enabled=true
-`, execArgument(executable), stringValue(executable), stringValue(icon))
+`, launcherCommand(executable), stringValue(executable), stringValue(icon))
+}
+
+func launcherCommand(executable string) string {
+	if !strings.ContainsRune(executable, '%') {
+		return execArgument(executable)
+	}
+
+	// GLib checks argv[0] before expanding desktop-entry field codes, so a
+	// correctly escaped %% in the executable path cannot pass that check.
+	// Execute through the standard shell and pass the path as a separate
+	// argument; field-code expansion then restores every literal percent.
+	return strings.Join([]string{
+		execArgument("/bin/sh"),
+		execArgument("-c"),
+		execArgument(`exec "$@"`),
+		execArgument("--"),
+		execArgument(executable),
+	}, " ")
 }
 
 func execArgument(value string) string {
