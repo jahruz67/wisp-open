@@ -13,6 +13,12 @@ package main
 import (
 	"os"
 	"strings"
+
+	"wis-free-v3/internal/config"
+	"wis-free-v3/internal/globalshortcuts"
+	"wis-free-v3/internal/logger"
+
+	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 func init() {
@@ -52,8 +58,41 @@ func linuxShellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 }
 
-// The old daemon API remains a no-op so the common lifecycle code and
-// non-Linux stub stay simple. Shortcut delivery now uses the instance socket.
-func (a *App) startLinuxPressDaemon() {}
+// Hold-to-record uses real Activated/Deactivated events from the desktop. The
+// command above remains an explicitly labelled optional toggle shortcut.
+func (a *App) startLinuxPressDaemon() {
+	a.shortcutPortal = globalshortcuts.New(a.StartRecording, a.StopRecording, func(status globalshortcuts.Status) {
+		if status.Ready && !a.config.LinuxShortcutEnabled {
+			a.config.LinuxShortcutEnabled = true
+			if err := config.Save(a.config, ""); err != nil {
+				logger.Error("Could not save Linux shortcut preference: %v", err)
+			}
+		}
+		if a.ctx != nil {
+			wailsruntime.EventsEmit(a.ctx, "linux:shortcut-status", status)
+		}
+	})
+	if a.config.LinuxShortcutEnabled {
+		go a.shortcutPortal.Start("ALT+z")
+	}
+}
 
-func stopLinuxPressDaemon() {}
+func (a *App) GetLinuxShortcutStatus() globalshortcuts.Status {
+	if a.shortcutPortal == nil {
+		return globalshortcuts.Status{Message: "Shortcut service is starting…"}
+	}
+	return a.shortcutPortal.Status()
+}
+
+func (a *App) SetupLinuxShortcut() globalshortcuts.Status {
+	if a.shortcutPortal == nil {
+		return a.GetLinuxShortcutStatus()
+	}
+	return a.shortcutPortal.Configure("ALT+z")
+}
+
+func (a *App) stopLinuxPressDaemon() {
+	if a.shortcutPortal != nil {
+		a.shortcutPortal.Close()
+	}
+}

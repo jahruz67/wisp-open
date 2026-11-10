@@ -247,19 +247,8 @@ else
     exit 1
 fi
 
-cat > "$WORK_DIR/root/usr/share/applications/$APP_NAME.desktop" <<EOF
-[Desktop Entry]
-Type=Application
-Name=$DISPLAY_NAME
-Comment=$COMMENT
-Exec=/usr/bin/$APP_NAME
-TryExec=/usr/bin/$APP_NAME
-Icon=$APP_NAME
-StartupWMClass=$APP_NAME
-Terminal=false
-Categories=Utility;Audio;
-Keywords=dictation;speech;voice;transcription;whisper;
-EOF
+go run ./scripts/desktop-entry --executable "/usr/bin/$APP_NAME" \
+    > "$WORK_DIR/root/usr/share/applications/$APP_NAME.desktop"
 
 cat > "$WORK_DIR/root/usr/share/metainfo/$APP_NAME.metainfo.xml" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>

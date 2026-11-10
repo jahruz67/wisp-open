@@ -8,11 +8,13 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"wis-free-v3/internal/audio/recorder"
 	"wis-free-v3/internal/config"
+	"wis-free-v3/internal/globalshortcuts"
 	"wis-free-v3/internal/hotkey"
 	"wis-free-v3/internal/logger"
 	"wis-free-v3/internal/platform"
@@ -28,11 +30,13 @@ type App struct {
 	ctx               context.Context
 	audioRecorder     *recorder.AudioRecorder
 	hotkeyListener    *hotkey.Listener
+	shortcutPortal    *globalshortcuts.Manager
 	transcriber       *transcriber.Client
 	config            *config.Config
 	overlay           platform.Overlay
 	recordingPath     string
 	recording         int32
+	recordingMu       sync.Mutex // serialize slow starts with shortcut releases
 	isQuitting        bool
 	wasMediaPlaying   bool
 	whisperManager    *whisper.Manager
@@ -141,13 +145,9 @@ func (a *App) startup(ctx context.Context) {
 		}
 	})
 
-	// Start system tray in a goroutine
-	// PLATFORM NOTE: On Linux, Wails' GTK main loop needs tray.Start() to be
-	// called synchronously (uses systray.Register). Windows blocks on its Win32
-	// message pump; macOS registers its native status item and returns quickly.
-	if runtime.GOOS == "linux" {
-		tray.Start(a)
-	} else {
+	// Linux registers its persistent tray early in startupHeadless. Windows
+	// blocks on its Win32 message pump; macOS registers its native status item.
+	if runtime.GOOS != "linux" {
 		go tray.Start(a)
 	}
 
@@ -208,6 +208,14 @@ func (a *App) ToggleRecording() {
 
 // StartRecording starts the audio recording
 func (a *App) StartRecording() {
+	a.recordingMu.Lock()
+	defer a.recordingMu.Unlock()
+	// Keep the processing indicator and target application stable until text
+	// insertion has finished. A fresh hold during that period is ignored.
+	if atomic.LoadInt32(&a.transcribing) != 0 {
+		return
+	}
+
 	if runtime.GOOS == "darwin" && platform.GetStatus().Microphone != platform.PermissionGranted {
 		logger.Error("Recording blocked because macOS microphone permission is not granted")
 		tray.UpdateStatus("Microphone permission required")
@@ -220,6 +228,14 @@ func (a *App) StartRecording() {
 	if !atomic.CompareAndSwapInt32(&a.recording, 0, 1) {
 		return
 	}
+	tray.UpdateStatus("Recording...")
+	started := false
+	defer func() {
+		if !started {
+			atomic.StoreInt32(&a.recording, 0)
+			tray.UpdateStatus("Ready")
+		}
+	}()
 	logger.Info("StartRecording triggered")
 
 	// 1. Show overlay immediately (most visible feedback)
@@ -281,8 +297,7 @@ func (a *App) StartRecording() {
 		}
 	}
 
-	// 3. Update tray status
-	tray.UpdateStatus("Recording...")
+	started = true
 
 	// Pause media if playing (do synchronously so wasMediaPlaying is ready before Stop)
 	a.wasMediaPlaying = platform.PauseMedia()
@@ -293,6 +308,9 @@ func (a *App) StartRecording() {
 
 // StopRecording stops the audio recording and triggers transcription
 func (a *App) StopRecording() {
+	a.recordingMu.Lock()
+	defer a.recordingMu.Unlock()
+
 	if !atomic.CompareAndSwapInt32(&a.recording, 1, 0) {
 		return
 	}
@@ -304,12 +322,6 @@ func (a *App) StopRecording() {
 	// linger after recording had already ended.
 	tray.UpdateStatus("Processing...")
 
-	// Resume media if it was playing before
-	platform.ResumeMedia(a.wasMediaPlaying)
-	if a.wasMediaPlaying {
-		logger.Info("Media resumed after recording")
-	}
-
 	if a.audioRecorder == nil {
 		tray.UpdateStatus("Ready")
 		return
@@ -320,19 +332,42 @@ func (a *App) StopRecording() {
 	pathToProcess := a.recordingPath
 
 	err := a.audioRecorder.Stop()
+	// Stop capture before resuming media, so a slow desktop media command
+	// cannot keep recording audio after the shortcut has been released.
+	platform.ResumeMedia(a.wasMediaPlaying)
+	if a.wasMediaPlaying {
+		logger.Info("Media resumed after recording")
+	}
 	if err != nil {
 		logger.Error("Failed to stop recording: %v", err)
 		tray.UpdateStatus("Ready")
 		return
 	}
 
-	// Transcribe in a goroutine to avoid blocking
+	// Claim processing before releasing recordingMu, so another hold cannot
+	// start capture between stopping the mic and scheduling the worker.
+	atomic.StoreInt32(&a.transcribing, 1)
 	go a.processRecording(pathToProcess)
 }
 
-// processRecording handles transcription and pasting.
-// Uses an atomic guard to prevent concurrent transcriptions.
+// processRecording owns the busy state claimed by StopRecording. It handles
+// transcription and synchronous text insertion before returning to Ready.
 func (a *App) processRecording(recordingPath string) {
+	a.completeProcessing(func() { a.processRecordingFile(recordingPath) })
+}
+
+func (a *App) completeProcessing(work func()) {
+	defer atomic.StoreInt32(&a.transcribing, 0)
+	defer tray.UpdateStatus("Ready")
+	defer func() {
+		if a.overlay != nil {
+			a.overlay.Hide()
+		}
+	}()
+	work()
+}
+
+func (a *App) processRecordingFile(recordingPath string) {
 	if recordingPath == "" {
 		logger.Error("No recording path set")
 		tray.UpdateStatus("Ready")
@@ -341,15 +376,6 @@ func (a *App) processRecording(recordingPath string) {
 		}
 		return
 	}
-
-	// Prevent concurrent transcriptions: only one goroutine can process at a time.
-	// If another transcription is already in progress, discard this recording.
-	if !atomic.CompareAndSwapInt32(&a.transcribing, 0, 1) {
-		logger.Info("Another transcription already in progress, discarding recording: %s", recordingPath)
-		os.Remove(recordingPath)
-		return
-	}
-	defer atomic.StoreInt32(&a.transcribing, 0)
 
 	// IDIOT-PROOFING: Ignore extremely short recordings (less than ~100ms or ~3KB)
 	// that are likely accidental clicks or hardware glitches.
@@ -449,21 +475,20 @@ func (a *App) processRecording(recordingPath string) {
 		wailsruntime.EventsEmit(a.ctx, "history:updated")
 	}
 
-	tray.UpdateStatus("Typing...")
-	a.insertTranscription(refinedText)
+	a.finishTextInsertion(func() { a.insertTranscription(refinedText) })
 
 	// Clean up the recording file
 	if removeErr := os.Remove(recordingPath); removeErr != nil {
 		logger.Error("Failed to remove temporary recording file: %v", removeErr)
 	}
 	logger.Info("Processing complete!")
-	tray.UpdateStatus("Ready")
+}
 
-	// Hide overlay after a short delay
-	time.Sleep(1 * time.Second)
-	if a.overlay != nil {
-		a.overlay.Hide()
-	}
+// finishTextInsertion is synchronous: the microphone stays yellow until all
+// typing/pasting has returned, including slow native input commands.
+func (a *App) finishTextInsertion(insert func()) {
+	tray.UpdateStatus("Typing...")
+	insert()
 }
 
 // GetSettings returns the current configuration
@@ -508,6 +533,8 @@ func (a *App) GetSettings() map[string]interface{} {
 		}
 		conf["linux_press_mode"] = true
 		conf["linux_ydotool_status"] = linuxYdotoolStatus()
+		conf["linux_shortcut_status"] = a.GetLinuxShortcutStatus()
+		conf["linux_tray_status"] = tray.LinuxHostStatus()
 	}
 	return conf
 }
@@ -693,6 +720,12 @@ func (a *App) startupHeadless() {
 	// Initialize heavy components synchronously instead of in background.
 	// This prevents a known ALSA/GTK initialization race condition bug on Linux
 	// where Miniaudio and GTK try to probe audio devices concurrently resulting in SIGABRT.
+	// Queue the persistent idle icon as soon as configuration is loaded, before
+	// microphone/model initialization or service setup can delay it. GTK work
+	// is dispatched by tray.Start onto the existing GTK main loop.
+	if runtime.GOOS == "linux" {
+		tray.Start(a)
+	}
 
 	// Initialize transcriber
 	a.transcriber = transcriber.NewClient(
@@ -729,9 +762,8 @@ func (a *App) startupHeadless() {
 		logger.Error("Failed to ensure desktop file: %v", err)
 	}
 
-	// Linux uses the desktop custom-shortcut command shown in Settings instead
-	// of an in-app global hotkey backend. Other platforms keep their native
-	// listeners.
+	// Linux hold-to-record is registered through the desktop portal after this
+	// initialization. Other platforms keep their native listeners.
 	if runtime.GOOS != "linux" {
 		a.hotkeyListener = hotkey.NewListener(a.config.Shortcut, a.StartRecording, a.StopRecording)
 		a.hotkeyListener.Start()
@@ -741,7 +773,7 @@ func (a *App) startupHeadless() {
 		if err := startLinuxDirectTypingService(false); err != nil {
 			logger.Info("Linux direct-typing service was not auto-started: %v", err)
 		}
-		logger.Info("Linux shortcut setup uses the command shown in Settings; configure it in GNOME/KDE custom shortcuts")
+		logger.Info("Linux hold-to-record uses the desktop Global Shortcuts portal")
 	}
 
 	logger.Info("Components initialized successfully!")
@@ -751,6 +783,7 @@ func (a *App) startupHeadless() {
 
 // Shutdown cleans up resources
 func (a *App) Shutdown(ctx context.Context) {
+	a.stopLinuxPressDaemon()
 	if a.hotkeyListener != nil {
 		a.hotkeyListener.Stop()
 	}
@@ -760,8 +793,6 @@ func (a *App) Shutdown(ctx context.Context) {
 	if a.overlay != nil {
 		a.overlay.Close()
 	}
-	// Gracefully shut down the Linux press daemon HTTP server (no-op on Windows)
-	stopLinuxPressDaemon()
 	logger.Close()
 }
 

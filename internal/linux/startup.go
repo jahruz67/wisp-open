@@ -13,37 +13,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"wis-free-v3/internal/desktopentry"
 )
 
 const appName = "wis-free-v3"
-
-// desktopFileTemplate is filled with execLine built from the absolute binary path.
-// Paths with spaces must be quoted per the Desktop Entry spec.
-const baseDesktopFileTemplate = `[Desktop Entry]
-Type=Application
-Name=WIS Free V3
-Comment=Voice Recording and Transcription
-%s
-%s
-Icon=%s
-StartupWMClass=%s
-Terminal=false
-Categories=Utility;
-Keywords=voice;recorder;transcription;
-`
-
-const autostartDesktopFileTemplate = `[Desktop Entry]
-Type=Application
-Name=WIS Free V3
-Comment=Voice Recording and Transcription
-%s
-%s
-Icon=%s
-StartupWMClass=%s
-Terminal=false
-Categories=Utility;
-X-GNOME-Autostart-enabled=true
-`
 
 func EnsureDesktopFile(iconBytes []byte) error {
 	home, err := os.UserHomeDir()
@@ -51,7 +25,8 @@ func EnsureDesktopFile(iconBytes []byte) error {
 		return err
 	}
 
-	appsDir := filepath.Join(home, ".local", "share", "applications")
+	dataDir := xdgDirectory("XDG_DATA_HOME", filepath.Join(home, ".local", "share"))
+	appsDir := filepath.Join(dataDir, "applications")
 	if err := os.MkdirAll(appsDir, 0755); err != nil {
 		return err
 	}
@@ -64,7 +39,7 @@ func EnsureDesktopFile(iconBytes []byte) error {
 	}
 
 	// Write icon to local pixmaps so the desktop file Icon= field resolves
-	pixmapsDir := filepath.Join(home, ".local", "share", "pixmaps")
+	pixmapsDir := filepath.Join(dataDir, "pixmaps")
 	if err := os.MkdirAll(pixmapsDir, 0755); err != nil {
 		return err
 	}
@@ -73,7 +48,7 @@ func EnsureDesktopFile(iconBytes []byte) error {
 		return fmt.Errorf("failed to write icon to pixmaps: %w", err)
 	}
 
-	content := fmt.Sprintf(baseDesktopFileTemplate, desktopExecField(exePath), desktopTryExecField(exePath), iconPath, appName)
+	content := desktopentry.Application(exePath, iconPath)
 	return os.WriteFile(desktopPath, []byte(content), 0644)
 }
 
@@ -83,10 +58,7 @@ func getAutostartPath() (string, error) {
 		return "", err
 	}
 
-	configDir := os.Getenv("XDG_CONFIG_HOME")
-	if configDir == "" {
-		configDir = filepath.Join(home, ".config")
-	}
+	configDir := xdgDirectory("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	autostartDir := filepath.Join(configDir, "autostart")
 
 	if err := os.MkdirAll(autostartDir, 0755); err != nil {
@@ -104,31 +76,13 @@ func getExecutablePath() (string, error) {
 	return filepath.Abs(exe)
 }
 
-// desktopExecField returns one line: Exec=/path or Exec="/path with spaces"
-func desktopExecField(exePath string) string {
-	needsQuote := false
-	for _, r := range exePath {
-		if r == ' ' || r == '\t' || r == '"' || r == '\'' || r == '\\' {
-			needsQuote = true
-			break
-		}
+// XDG paths must be absolute. Ignore relative values as required by the base
+// directory specification, rather than writing relative to the launcher's cwd.
+func xdgDirectory(name, fallback string) string {
+	if directory := os.Getenv(name); filepath.IsAbs(directory) {
+		return directory
 	}
-	if !needsQuote {
-		return "Exec=" + exePath
-	}
-	escaped := ""
-	for _, r := range exePath {
-		if r == '"' || r == '`' || r == '$' || r == '\\' {
-			escaped += `\`
-		}
-		escaped += string(r)
-	}
-	return `Exec="` + escaped + `"`
-}
-
-// desktopTryExecField returns one line: TryExec=/path (desktop entries do not accept quoting for TryExec)
-func desktopTryExecField(exePath string) string {
-	return "TryExec=" + exePath
+	return fallback
 }
 
 func AddToStartup() error {
@@ -146,13 +100,14 @@ func AddToStartup() error {
 	// Fall back to the icon name (theme lookup) if it doesn't exist.
 	iconValue := appName
 	if home, err := os.UserHomeDir(); err == nil {
-		iconPath := filepath.Join(home, ".local", "share", "pixmaps", appName+".png")
+		dataDir := xdgDirectory("XDG_DATA_HOME", filepath.Join(home, ".local", "share"))
+		iconPath := filepath.Join(dataDir, "pixmaps", appName+".png")
 		if _, statErr := os.Stat(iconPath); statErr == nil {
 			iconValue = iconPath
 		}
 	}
 
-	content := fmt.Sprintf(autostartDesktopFileTemplate, desktopExecField(exePath)+" --background", desktopTryExecField(exePath), iconValue, appName)
+	content := desktopentry.Autostart(exePath, iconValue)
 	if err := os.WriteFile(autostartPath, []byte(content), 0644); err != nil {
 		return fmt.Errorf("failed to write autostart file: %w", err)
 	}
@@ -181,6 +136,6 @@ func IsInStartup() bool {
 		return false
 	}
 
-	_, err = os.Stat(autostartPath)
-	return err == nil
+	content, err := os.ReadFile(autostartPath)
+	return err == nil && desktopentry.AutostartEnabled(string(content))
 }

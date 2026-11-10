@@ -8,9 +8,14 @@
 
 package main
 
+import "wis-free-v3/internal/globalshortcuts"
+
 func (a *App) startLinuxPressDaemon() {}
 
-func stopLinuxPressDaemon() {}
+func (a *App) stopLinuxPressDaemon() {}
+
+func (a *App) GetLinuxShortcutStatus() globalshortcuts.Status { return globalshortcuts.Status{} }
+func (a *App) SetupLinuxShortcut() globalshortcuts.Status     { return globalshortcuts.Status{} }
 
 func linuxShortcutCommand(executable string) string {
 	return executable + " --action=toggle"
