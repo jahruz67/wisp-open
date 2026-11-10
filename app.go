@@ -70,7 +70,9 @@ func (a *App) startup(ctx context.Context) {
 
 	// Create and clean private temp directory for recordings (Cleanup in background)
 	a.tempDir = filepath.Join(os.TempDir(), "wis-free-v3-recordings")
-	os.MkdirAll(a.tempDir, 0700)
+	if err := os.MkdirAll(a.tempDir, 0700); err != nil {
+		logger.Error("Failed to create recording temp directory: %v", err)
+	}
 
 	go func() {
 		// Clean up any orphaned files from previous sessions
@@ -238,6 +240,15 @@ func (a *App) StartRecording() {
 	}
 
 	// Prepare path safely in our private temp directory
+	// Temp cleaners may remove the directory while the app is running.
+	if err := os.MkdirAll(a.tempDir, 0700); err != nil {
+		logger.Error("Failed to create recording temp directory: %v", err)
+		if a.overlay != nil {
+			a.overlay.Hide()
+		}
+		atomic.StoreInt32(&a.recording, 0)
+		return
+	}
 	tempFile, err := os.CreateTemp(a.tempDir, "rec_*.wav")
 	if err != nil {
 		logger.Error("Failed to create temp file: %v", err)
