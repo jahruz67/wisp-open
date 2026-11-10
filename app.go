@@ -38,7 +38,7 @@ type App struct {
 	recording         int32
 	recordingMu       sync.Mutex // serialize slow starts with shortcut releases
 	isQuitting        bool
-	wasMediaPlaying   bool
+	restoreVolume     func()
 	whisperManager    *whisper.Manager
 	tempDir           string
 	transcribing      int32 // atomic: 1 = transcription in progress, prevents concurrent
@@ -232,6 +232,10 @@ func (a *App) StartRecording() {
 	started := false
 	defer func() {
 		if !started {
+			if a.restoreVolume != nil {
+				a.restoreVolume()
+				a.restoreVolume = nil
+			}
 			atomic.StoreInt32(&a.recording, 0)
 			tray.UpdateStatus("Ready")
 		}
@@ -277,6 +281,12 @@ func (a *App) StartRecording() {
 	a.recordingPath = tempFile.Name()
 	tempFile.Close() // We just need the path, recorder will open it
 
+	// Lower output before opening the microphone; retain restoration for failures.
+	a.restoreVolume = platform.DuckMedia()
+	if a.restoreVolume != nil {
+		logger.Info("Output volume lowered for recording")
+	}
+
 	// Start recording
 	err = a.audioRecorder.Start(a.recordingPath)
 	if err != nil {
@@ -298,12 +308,6 @@ func (a *App) StartRecording() {
 	}
 
 	started = true
-
-	// Pause media if playing (do synchronously so wasMediaPlaying is ready before Stop)
-	a.wasMediaPlaying = platform.PauseMedia()
-	if a.wasMediaPlaying {
-		logger.Info("Media paused for recording")
-	}
 }
 
 // StopRecording stops the audio recording and triggers transcription
@@ -332,11 +336,11 @@ func (a *App) StopRecording() {
 	pathToProcess := a.recordingPath
 
 	err := a.audioRecorder.Stop()
-	// Stop capture before resuming media, so a slow desktop media command
+	// Stop capture before restoring volume, so a slow desktop audio command
 	// cannot keep recording audio after the shortcut has been released.
-	platform.ResumeMedia(a.wasMediaPlaying)
-	if a.wasMediaPlaying {
-		logger.Info("Media resumed after recording")
+	if a.restoreVolume != nil {
+		a.restoreVolume()
+		a.restoreVolume = nil
 	}
 	if err != nil {
 		logger.Error("Failed to stop recording: %v", err)
@@ -787,9 +791,15 @@ func (a *App) Shutdown(ctx context.Context) {
 	if a.hotkeyListener != nil {
 		a.hotkeyListener.Stop()
 	}
+	a.recordingMu.Lock()
 	if a.audioRecorder != nil {
 		a.audioRecorder.Cleanup()
 	}
+	if a.restoreVolume != nil {
+		a.restoreVolume()
+		a.restoreVolume = nil
+	}
+	a.recordingMu.Unlock()
 	if a.overlay != nil {
 		a.overlay.Close()
 	}

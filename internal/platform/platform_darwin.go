@@ -10,9 +10,7 @@ import (
 
 func NewOverlay() Overlay { return mac.NewOverlay() }
 
-func PauseMedia() bool { return mac.PauseMedia() }
-
-func ResumeMedia(wasPaused bool) { mac.ResumeMedia(wasPaused) }
+func DuckMedia() func() { return mac.DuckMedia() }
 
 func AddToStartup() error { return mac.AddToStartup() }
 

@@ -14,12 +14,8 @@ func NewOverlay() Overlay {
 	return windows.NewOverlay()
 }
 
-func PauseMedia() bool {
-	return windows.PauseMedia()
-}
-
-func ResumeMedia(wasPaused bool) {
-	windows.ResumeMedia(wasPaused)
+func DuckMedia() func() {
+	return windows.DuckMedia()
 }
 
 func AddToStartup() error {
