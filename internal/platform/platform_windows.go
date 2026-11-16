@@ -14,8 +14,8 @@ func NewOverlay() Overlay {
 	return windows.NewOverlay()
 }
 
-func DuckMedia() func() {
-	return windows.DuckMedia()
+func MuteOutput() func() {
+	return windows.MuteOutput()
 }
 
 func AddToStartup() error {

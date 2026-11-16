@@ -38,7 +38,7 @@ type App struct {
 	recording         int32
 	recordingMu       sync.Mutex // serialize slow starts with shortcut releases
 	isQuitting        bool
-	restoreVolume     func()
+	restoreOutput     func()
 	whisperManager    *whisper.Manager
 	tempDir           string
 	transcribing      int32 // atomic: 1 = transcription in progress, prevents concurrent
@@ -232,9 +232,9 @@ func (a *App) StartRecording() {
 	started := false
 	defer func() {
 		if !started {
-			if a.restoreVolume != nil {
-				a.restoreVolume()
-				a.restoreVolume = nil
+			if a.restoreOutput != nil {
+				a.restoreOutput()
+				a.restoreOutput = nil
 			}
 			atomic.StoreInt32(&a.recording, 0)
 			tray.UpdateStatus("Ready")
@@ -281,10 +281,10 @@ func (a *App) StartRecording() {
 	a.recordingPath = tempFile.Name()
 	tempFile.Close() // We just need the path, recorder will open it
 
-	// Lower output before opening the microphone; retain restoration for failures.
-	a.restoreVolume = platform.DuckMedia()
-	if a.restoreVolume != nil {
-		logger.Info("Output volume lowered for recording")
+	// Mute output before opening the microphone; retain restoration for failures.
+	a.restoreOutput = platform.MuteOutput()
+	if a.restoreOutput != nil {
+		logger.Info("Output muted for recording")
 	}
 
 	// Start recording
@@ -336,11 +336,11 @@ func (a *App) StopRecording() {
 	pathToProcess := a.recordingPath
 
 	err := a.audioRecorder.Stop()
-	// Stop capture before restoring volume, so a slow desktop audio command
+	// Stop capture before restoring the mute state, so a slow desktop audio command
 	// cannot keep recording audio after the shortcut has been released.
-	if a.restoreVolume != nil {
-		a.restoreVolume()
-		a.restoreVolume = nil
+	if a.restoreOutput != nil {
+		a.restoreOutput()
+		a.restoreOutput = nil
 	}
 	if err != nil {
 		logger.Error("Failed to stop recording: %v", err)
@@ -795,9 +795,9 @@ func (a *App) Shutdown(ctx context.Context) {
 	if a.audioRecorder != nil {
 		a.audioRecorder.Cleanup()
 	}
-	if a.restoreVolume != nil {
-		a.restoreVolume()
-		a.restoreVolume = nil
+	if a.restoreOutput != nil {
+		a.restoreOutput()
+		a.restoreOutput = nil
 	}
 	a.recordingMu.Unlock()
 	if a.overlay != nil {

@@ -6,28 +6,28 @@
 
 typedef struct {
     AudioObjectPropertyElement channel;
-    Float32 volume;
-} WISVolumeChannel;
+    UInt32 muted;
+} WISMuteChannel;
 
 typedef struct {
     AudioDeviceID device;
     UInt32 count;
-    WISVolumeChannel channels[];
-} WISOutputVolume;
+    WISMuteChannel channels[];
+} WISOutputMute;
 
-static AudioObjectPropertyAddress WISVolumeAddress(AudioObjectPropertyElement channel) {
+static AudioObjectPropertyAddress WISMuteAddress(AudioObjectPropertyElement channel) {
     return (AudioObjectPropertyAddress){
-        kAudioDevicePropertyVolumeScalar, kAudioObjectPropertyScopeOutput, channel
+        kAudioDevicePropertyMute, kAudioObjectPropertyScopeOutput, channel
     };
 }
 
-bool wis_restore_output(void *state) {
-    WISOutputVolume *saved = state;
+bool wis_restore_output_mute(void *state) {
+    WISOutputMute *saved = state;
     bool success = true;
     for (UInt32 i = 0; i < saved->count; i++) {
-        AudioObjectPropertyAddress address = WISVolumeAddress(saved->channels[i].channel);
+        AudioObjectPropertyAddress address = WISMuteAddress(saved->channels[i].channel);
         if (AudioObjectSetPropertyData(saved->device, &address, 0, NULL,
-                                      sizeof(Float32), &saved->channels[i].volume) != noErr) {
+                                      sizeof(UInt32), &saved->channels[i].muted) != noErr) {
             success = false;
         }
     }
@@ -35,7 +35,7 @@ bool wis_restore_output(void *state) {
     return success;
 }
 
-void *wis_duck_output(void) {
+void *wis_mute_output(void) {
     AudioDeviceID device = kAudioObjectUnknown;
     UInt32 size = sizeof(device);
     AudioObjectPropertyAddress address = {
@@ -45,7 +45,7 @@ void *wis_duck_output(void) {
     if (AudioObjectGetPropertyData(kAudioObjectSystemObject, &address, 0, NULL,
                                   &size, &device) != noErr || device == kAudioObjectUnknown) return NULL;
 
-    address = WISVolumeAddress(kAudioObjectPropertyElementMain);
+    address = WISMuteAddress(kAudioObjectPropertyElementMain);
     Boolean settable = false;
     bool master = AudioObjectIsPropertySettable(device, &address, &settable) == noErr && settable;
     UInt32 count = 1;
@@ -66,26 +66,26 @@ void *wis_duck_output(void) {
         if (count == 0) return NULL;
     }
 
-    WISOutputVolume *saved = calloc(1, sizeof(WISOutputVolume) + count * sizeof(WISVolumeChannel));
+    WISOutputMute *saved = calloc(1, sizeof(WISOutputMute) + count * sizeof(WISMuteChannel));
     if (!saved) return NULL;
     saved->device = device;
     saved->count = count;
     for (UInt32 i = 0; i < count; i++) {
         saved->channels[i].channel = master ? kAudioObjectPropertyElementMain : i + 1;
-        address = WISVolumeAddress(saved->channels[i].channel);
-        size = sizeof(Float32);
+        address = WISMuteAddress(saved->channels[i].channel);
+        size = sizeof(UInt32);
         settable = false;
         if (AudioObjectIsPropertySettable(device, &address, &settable) != noErr || !settable ||
-            AudioObjectGetPropertyData(device, &address, 0, NULL, &size, &saved->channels[i].volume) != noErr) {
+            AudioObjectGetPropertyData(device, &address, 0, NULL, &size, &saved->channels[i].muted) != noErr) {
             free(saved);
             return NULL;
         }
     }
     for (UInt32 i = 0; i < count; i++) {
-        address = WISVolumeAddress(saved->channels[i].channel);
-        Float32 quiet = saved->channels[i].volume * 0.01f;
-        if (AudioObjectSetPropertyData(device, &address, 0, NULL, sizeof(quiet), &quiet) != noErr) {
-            wis_restore_output(saved);
+        address = WISMuteAddress(saved->channels[i].channel);
+        UInt32 muted = 1;
+        if (AudioObjectSetPropertyData(device, &address, 0, NULL, sizeof(muted), &muted) != noErr) {
+            wis_restore_output_mute(saved);
             return NULL;
         }
     }

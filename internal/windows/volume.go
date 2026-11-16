@@ -4,7 +4,6 @@ package windows
 
 import (
 	"fmt"
-	"math"
 	"runtime"
 	"syscall"
 	"unsafe"
@@ -25,7 +24,7 @@ var (
 )
 
 type mediaCOM struct {
-	vtable *[10]uintptr
+	vtable *[16]uintptr
 }
 
 //go:uintptrescapes
@@ -88,29 +87,28 @@ func withOutputVolume(deviceID string, change func(*mediaCOM, string) error) err
 	return change(volume, win.UTF16PtrToString(id))
 }
 
-// DuckMedia leaves playback and mute state alone, lowering output to 1% of its
-// current level. The returned function restores the original device's volume.
-func DuckMedia() func() {
-	var original float32
+// MuteOutput mutes playback without changing the volume setting. The returned
+// function restores the original device's previous mute state.
+func MuteOutput() func() {
+	var original int32
 	var deviceID string
 	err := withOutputVolume("", func(volume *mediaCOM, id string) error {
 		deviceID = id
-		if err := volume.call(9, uintptr(unsafe.Pointer(&original))); err != nil { // GetMasterVolumeLevelScalar
+		if err := volume.call(15, uintptr(unsafe.Pointer(&original))); err != nil { // GetMute
 			return err
 		}
-		// SyscallN passes the float bit pattern through the Windows calling convention.
-		return volume.call(7, uintptr(math.Float32bits(original*0.01)), 0) // SetMasterVolumeLevelScalar
+		return volume.call(14, 1, 0) // SetMute(TRUE)
 	})
 	if err != nil {
-		logger.Error("Failed to lower output volume: %v", err)
+		logger.Error("Failed to mute output: %v", err)
 		return nil
 	}
 	return func() {
 		err := withOutputVolume(deviceID, func(volume *mediaCOM, _ string) error {
-			return volume.call(7, uintptr(math.Float32bits(original)), 0)
+			return volume.call(14, uintptr(original), 0) // SetMute
 		})
 		if err != nil {
-			logger.Error("Failed to restore output volume: %v", err)
+			logger.Error("Failed to restore output mute state: %v", err)
 		}
 	}
 }
