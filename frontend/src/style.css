@@ -378,7 +378,7 @@ button:active {
 }
 
 .api-keys-summary::after {
-    content: '\u25b6';
+    content: '\25B6';
     font-size: 10px;
     color: var(--text-3);
     transition: transform 0.15s ease;
@@ -579,7 +579,7 @@ select option[data-provider="local"]::before {
 }
 
 .fallback-summary::before {
-    content: '\u25b6';
+    content: '\25B6';
     font-size: 10px;
     color: var(--text-3);
     transition: transform 0.15s ease;

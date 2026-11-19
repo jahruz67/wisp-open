@@ -14,4 +14,6 @@ var ModMap = map[string]xhk.Modifier{
 	"windows": xhk.Mod4,
 	"meta":    xhk.Mod4,
 	"super":   xhk.Mod4,
+	"cmd":     xhk.Mod4,
+	"command": xhk.Mod4,
 }

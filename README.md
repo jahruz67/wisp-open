@@ -60,6 +60,8 @@ With no flag, the script builds both formats and requires both `dpkg-deb` and `r
 
 Settings are available from the Settings window and tray menu. Configuration is stored in `~/.wis-free-v3/config.json`.
 
+The default recording shortcut is **Ctrl+Super**: Ctrl+Windows on Windows and Ctrl+Command on macOS.
+
 ## License
 
 Distributed under the MIT License.

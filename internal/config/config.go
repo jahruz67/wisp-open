@@ -11,7 +11,7 @@ import (
 
 // Application defaults
 const (
-	DefaultShortcut     = "alt+z"
+	DefaultShortcut     = "ctrl+super"
 	DefaultWhisperModel = "whisper-large-v3-turbo"
 	DefaultAIModel      = "llama-3.3-70b-versatile"
 	DefaultVoxtralModel = "voxtral-mini-latest"
