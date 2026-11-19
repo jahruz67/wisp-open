@@ -20,6 +20,7 @@ type Listener struct {
 	shortcut                  string
 	hk                        *xhk.Hotkey
 	stopModPoll               chan struct{}
+	modPollDone               chan struct{}
 	mu                        sync.RWMutex
 	eventLoopDone             chan struct{}
 }
@@ -43,8 +44,8 @@ func (l *Listener) SetRegistrationErrorCallback(cb func(error)) {
 	l.mu.Unlock()
 }
 
-// SetRegistrationReadyCallback sets a callback invoked when modifier polling is
-// active and the configured modifier-only shortcut can be monitored.
+// SetRegistrationReadyCallback sets a callback invoked when Linux input polling
+// is active and the configured shortcut can be monitored.
 func (l *Listener) SetRegistrationReadyCallback(cb func()) {
 	l.mu.Lock()
 	l.registrationReadyCallback = cb
@@ -58,7 +59,9 @@ func (l *Listener) UpdateShortcut(shortcut string) {
 	l.shortcut = shortcut
 	wasListening := l.isListening
 	doneCh := l.eventLoopDone
+	pollDone := l.modPollDone
 	l.eventLoopDone = nil // prevent stopListeningLocked from waiting on it
+	l.modPollDone = nil
 	l.stopListeningLocked()
 	l.mu.Unlock()
 
@@ -66,6 +69,9 @@ func (l *Listener) UpdateShortcut(shortcut string) {
 	// mutex (otherwise the loop can't acquire the lock to signal done).
 	if doneCh != nil {
 		<-doneCh
+	}
+	if pollDone != nil {
+		<-pollDone
 	}
 
 	logger.Info("Hotkey updated: shortcut=%s", shortcut)
@@ -90,21 +96,40 @@ func (l *Listener) Start() {
 		return
 	}
 
+	if runtime.GOOS == "linux" {
+		ch := make(chan struct{})
+		done := make(chan struct{})
+		l.stopModPoll = ch
+		l.modPollDone = done
+		l.isListening = true
+		l.mu.Unlock()
+		logger.Info("Hotkey listener started (Linux input poll), waiting for %s", l.shortcut)
+		go func() {
+			defer close(done)
+			l.linuxInputPollLoop(key, mods, modOnly, ch)
+		}()
+		return
+	}
+
 	if modOnly {
-		// Modifier-only shortcuts are supported through platform-specific key
-		// state polling on Windows and Linux. macOS does not expose a global
-		// modifier-state API to this application.
-		if runtime.GOOS != "windows" && runtime.GOOS != "linux" {
+		// Modifier-only Windows shortcuts use key-state polling. Linux is
+		// handled by the direct input poll above.
+		if runtime.GOOS != "windows" {
 			logger.Error("Modifier-only shortcuts like %q are not supported on %s", l.shortcut, runtime.GOOS)
 			l.mu.Unlock()
 			return
 		}
 		ch := make(chan struct{})
+		done := make(chan struct{})
 		l.stopModPoll = ch
+		l.modPollDone = done
 		l.isListening = true
 		l.mu.Unlock()
 		logger.Info("Hotkey listener started (modifier poll), waiting for %s", l.shortcut)
-		go l.modifierPollLoop(mods, ch)
+		go func() {
+			defer close(done)
+			l.modifierPollLoop(mods, ch)
+		}()
 		return
 	}
 
@@ -148,7 +173,9 @@ func (l *Listener) Start() {
 func (l *Listener) Stop() {
 	l.mu.Lock()
 	doneCh := l.eventLoopDone
+	pollDone := l.modPollDone
 	l.eventLoopDone = nil
+	l.modPollDone = nil
 	l.stopListeningLocked()
 	l.mu.Unlock()
 
@@ -156,6 +183,9 @@ func (l *Listener) Stop() {
 	// mutex (otherwise the loop can't acquire the lock to signal done).
 	if doneCh != nil {
 		<-doneCh
+	}
+	if pollDone != nil {
+		<-pollDone
 	}
 	logger.Info("Hotkey listener stopped")
 }

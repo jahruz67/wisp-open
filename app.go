@@ -583,25 +583,26 @@ func (a *App) SaveSettings(settings map[string]interface{}) string {
 		}
 	}
 	if val, ok := settings["shortcut"].(string); ok {
-		if runtime.GOOS == "linux" {
-			logger.Info("Ignoring in-app shortcut recording on Linux; use the desktop custom-shortcut command shown in Settings")
-		} else {
-			_, _, modOnly, ok := hotkey.ParseShortcut(val)
-			if !ok {
-				logger.Error("Invalid shortcut: %s (rejected)", val)
-				return "Invalid shortcut - use modifiers plus a key (e.g. ctrl+k), or modifier-only on Windows (e.g. ctrl+win)"
-			}
-			if modOnly && runtime.GOOS != "windows" {
-				return "Modifier-only shortcuts (like ctrl+win) are only supported on Windows"
-			}
+		_, _, modOnly, valid := hotkey.ParseShortcut(val)
+		if !valid {
+			logger.Error("Invalid shortcut: %s (rejected)", val)
+			return "Invalid shortcut - use a key with optional modifiers, or at least two modifiers (e.g. ctrl+shift+z or ctrl+super)"
+		}
+		if modOnly && runtime.GOOS != "windows" && runtime.GOOS != "linux" {
+			return "Modifier-only shortcuts are supported on Windows and Linux"
+		}
 
-			a.config.Shortcut = val
+		a.config.Shortcut = val
+		if runtime.GOOS == "linux" {
 			if a.hotkeyListener != nil {
-				a.hotkeyListener.UpdateShortcut(val)
-			} else {
-				a.hotkeyListener = hotkey.NewListener(val, a.StartRecording, a.StopRecording)
-				a.hotkeyListener.Start()
+				a.hotkeyListener.Stop()
 			}
+			a.startLinuxShortcutListener()
+		} else if a.hotkeyListener != nil {
+			a.hotkeyListener.UpdateShortcut(val)
+		} else {
+			a.hotkeyListener = hotkey.NewListener(val, a.StartRecording, a.StopRecording)
+			a.hotkeyListener.Start()
 		}
 	}
 	if val, ok := settings["whisper_model"].(string); ok {

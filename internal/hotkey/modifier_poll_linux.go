@@ -27,7 +27,7 @@ const (
 	keyRightMeta  = 126
 )
 
-type linuxModifierDevice struct {
+type linuxInputDevice struct {
 	file *os.File
 	keys map[int]bool
 }
@@ -48,7 +48,42 @@ func linuxBitSet(bits []byte, code int) bool {
 	return code >= 0 && code/8 < len(bits) && bits[code/8]&(1<<uint(code%8)) != 0
 }
 
-func openLinuxModifierDevices() ([]linuxModifierDevice, error) {
+func linuxKeyCodesForShortcut(key xhk.Key, modifierOnly bool) (map[int]bool, int, error) {
+	interest := map[int]bool{
+		keyLeftCtrl: true, keyRightCtrl: true,
+		keyLeftAlt: true, keyRightAlt: true,
+		keyLeftShift: true, keyRightShift: true,
+		keyLeftMeta: true, keyRightMeta: true,
+	}
+	if modifierOnly {
+		return interest, 0, nil
+	}
+	keyCode, ok := linuxKeyCodeByKeysym[key]
+	if !ok {
+		return nil, 0, fmt.Errorf("Linux input polling does not support key code %d", key)
+	}
+	interest[keyCode] = true
+	return interest, keyCode, nil
+}
+
+var linuxKeyCodeByKeysym = map[xhk.Key]int{
+	xhk.KeyA: 30, xhk.KeyB: 48, xhk.KeyC: 46, xhk.KeyD: 32, xhk.KeyE: 18,
+	xhk.KeyF: 33, xhk.KeyG: 34, xhk.KeyH: 35, xhk.KeyI: 23, xhk.KeyJ: 36,
+	xhk.KeyK: 37, xhk.KeyL: 38, xhk.KeyM: 50, xhk.KeyN: 49, xhk.KeyO: 24,
+	xhk.KeyP: 25, xhk.KeyQ: 16, xhk.KeyR: 19, xhk.KeyS: 31, xhk.KeyT: 20,
+	xhk.KeyU: 22, xhk.KeyV: 47, xhk.KeyW: 17, xhk.KeyX: 45, xhk.KeyY: 21,
+	xhk.KeyZ: 44,
+	xhk.Key0: 11, xhk.Key1: 2, xhk.Key2: 3, xhk.Key3: 4, xhk.Key4: 5,
+	xhk.Key5: 6, xhk.Key6: 7, xhk.Key7: 8, xhk.Key8: 9, xhk.Key9: 10,
+	xhk.KeySpace: 57, xhk.KeyReturn: 28, xhk.KeyEscape: 1, xhk.KeyDelete: 111,
+	xhk.KeyTab: 15, xhk.KeyLeft: 105, xhk.KeyRight: 106, xhk.KeyUp: 103,
+	xhk.KeyDown: 108, xhk.KeyF1: 59, xhk.KeyF2: 60, xhk.KeyF3: 61,
+	xhk.KeyF4: 62, xhk.KeyF5: 63, xhk.KeyF6: 64, xhk.KeyF7: 65,
+	xhk.KeyF8: 66, xhk.KeyF9: 67, xhk.KeyF10: 68, xhk.KeyF11: 87,
+	xhk.KeyF12: 88,
+}
+
+func openLinuxInputDevices(interest map[int]bool) ([]linuxInputDevice, error) {
 	paths, err := filepath.Glob("/dev/input/event*")
 	if err != nil {
 		return nil, fmt.Errorf("find keyboard input devices: %w", err)
@@ -57,7 +92,7 @@ func openLinuxModifierDevices() ([]linuxModifierDevice, error) {
 		return nil, fmt.Errorf("no Linux keyboard input devices were found")
 	}
 
-	var devices []linuxModifierDevice
+	var devices []linuxInputDevice
 	var permissionErr error
 	for _, path := range paths {
 		file, openErr := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
@@ -78,15 +113,17 @@ func openLinuxModifierDevices() ([]linuxModifierDevice, error) {
 			file.Close()
 			continue
 		}
+
 		keys := make(map[int]bool)
-		for _, code := range []int{keyLeftCtrl, keyRightCtrl, keyLeftAlt, keyRightAlt, keyLeftShift, keyRightShift, keyLeftMeta, keyRightMeta} {
+		for code := range interest {
 			keys[code] = linuxBitSet(keyCapabilities[:], code)
 		}
-		// A candidate keyboard must report at least one of the requested
-		// modifier keys. Some keyboards expose the left and right keys on
-		// separate event nodes, so polling combines state from every node.
-		if keys[keyLeftCtrl] || keys[keyRightCtrl] || keys[keyLeftMeta] || keys[keyRightMeta] {
-			devices = append(devices, linuxModifierDevice{file: file, keys: keys})
+		relevant := false
+		for _, supported := range keys {
+			relevant = relevant || supported
+		}
+		if relevant {
+			devices = append(devices, linuxInputDevice{file: file, keys: keys})
 		} else {
 			file.Close()
 		}
@@ -98,25 +135,31 @@ func openLinuxModifierDevices() ([]linuxModifierDevice, error) {
 	if permissionErr != nil {
 		return nil, fmt.Errorf("cannot read /dev/input/event* (%v); grant this user read access to Linux input devices, then restart the app", permissionErr)
 	}
-	return nil, fmt.Errorf("no readable keyboard exposes Ctrl and Meta/Super state")
+	return nil, fmt.Errorf("no readable keyboard supports the configured shortcut")
 }
 
-func linuxKeyDown(bits []byte, keys map[int]bool, left, right int) bool {
-	return (keys[left] && linuxBitSet(bits, left)) || (keys[right] && linuxBitSet(bits, right))
+func linuxKeyDown(state map[int]bool, left, right int) bool {
+	return state[left] || state[right]
 }
 
-func linuxModifierState(required []xhk.Modifier, devices []linuxModifierDevice) (bool, error) {
-	var ctrl, shift, alt, meta bool
+func linuxShortcutActive(required []xhk.Modifier, triggerCode int, devices []linuxInputDevice) (bool, error) {
+	state := make(map[int]bool)
 	for _, device := range devices {
-		var state [linuxKeyBitmapBytes]byte
-		if err := linuxIOCBytes(device.file.Fd(), linuxIOCRead(uintptr(len(state)), 0x18), state[:]); err != nil {
+		var keysDown [linuxKeyBitmapBytes]byte
+		if err := linuxIOCBytes(device.file.Fd(), linuxIOCRead(uintptr(len(keysDown)), 0x18), keysDown[:]); err != nil {
 			return false, err
 		}
-		ctrl = ctrl || linuxKeyDown(state[:], device.keys, keyLeftCtrl, keyRightCtrl)
-		shift = shift || linuxKeyDown(state[:], device.keys, keyLeftShift, keyRightShift)
-		alt = alt || linuxKeyDown(state[:], device.keys, keyLeftAlt, keyRightAlt)
-		meta = meta || linuxKeyDown(state[:], device.keys, keyLeftMeta, keyRightMeta)
+		for code, supported := range device.keys {
+			if supported && linuxBitSet(keysDown[:], code) {
+				state[code] = true
+			}
+		}
 	}
+
+	ctrl := linuxKeyDown(state, keyLeftCtrl, keyRightCtrl)
+	shift := linuxKeyDown(state, keyLeftShift, keyRightShift)
+	alt := linuxKeyDown(state, keyLeftAlt, keyRightAlt)
+	meta := linuxKeyDown(state, keyLeftMeta, keyRightMeta)
 
 	needCtrl, needShift, needAlt, needMeta := false, false, false, false
 	for _, mod := range required {
@@ -130,23 +173,25 @@ func linuxModifierState(required []xhk.Modifier, devices []linuxModifierDevice) 
 		case xhk.Mod4:
 			needMeta = true
 		default:
-			return false, fmt.Errorf("Linux modifier polling does not support modifier mask %d", mod)
+			return false, fmt.Errorf("Linux input polling does not support modifier mask %d", mod)
 		}
 	}
-	return needCtrl == ctrl && needShift == shift && needAlt == alt && needMeta == meta, nil
+	modsMatch := needCtrl == ctrl && needShift == shift && needAlt == alt && needMeta == meta
+	if triggerCode == 0 {
+		return modsMatch, nil
+	}
+	return modsMatch && state[triggerCode], nil
 }
 
-func (l *Listener) modifierPollLoop(required []xhk.Modifier, stop <-chan struct{}) {
-	devices, err := openLinuxModifierDevices()
+func (l *Listener) linuxInputPollLoop(key xhk.Key, required []xhk.Modifier, modifierOnly bool, stop <-chan struct{}) {
+	interest, triggerCode, err := linuxKeyCodesForShortcut(key, modifierOnly)
 	if err != nil {
-		l.mu.Lock()
-		cb := l.registrationErrorCallback
-		l.isListening = false
-		l.stopModPoll = nil
-		l.mu.Unlock()
-		if cb != nil {
-			cb(err)
-		}
+		l.failLinuxInputPoll(err)
+		return
+	}
+	devices, err := openLinuxInputDevices(interest)
+	if err != nil {
+		l.failLinuxInputPoll(err)
 		return
 	}
 	defer func() {
@@ -161,41 +206,71 @@ func (l *Listener) modifierPollLoop(required []xhk.Modifier, stop <-chan struct{
 	if ready != nil {
 		ready()
 	}
-	logger.Info("Linux modifier hotkey polling started")
+	logger.Info("Linux keyboard shortcut polling started")
+
+	// Run start/release callbacks in order while the poller continues sampling
+	// key state. This preserves a quick press-and-release during microphone start.
+	actions := make(chan bool, 8)
+	workerDone := make(chan struct{})
+	go func() {
+		defer close(workerDone)
+		isRecording := false
+		for pressed := range actions {
+			if pressed && !isRecording {
+				l.startCallback()
+				isRecording = true
+			} else if !pressed && isRecording {
+				l.stopCallback()
+				isRecording = false
+			}
+		}
+		if isRecording {
+			l.stopCallback()
+		}
+	}()
+
 	ticker := time.NewTicker(15 * time.Millisecond)
 	defer ticker.Stop()
-
-	chordHeld, isRecording := false, false
+	shortcutHeld := false
 	for {
 		select {
 		case <-stop:
-			if isRecording {
-				l.stopCallback()
-			}
-			logger.Info("Linux modifier hotkey poll stopped")
+			close(actions)
+			<-workerDone
+			logger.Info("Linux keyboard shortcut polling stopped")
 			return
 		case <-ticker.C:
-			on, stateErr := linuxModifierState(required, devices)
+			held, stateErr := linuxShortcutActive(required, triggerCode, devices)
 			if stateErr != nil {
-				logger.Error("Could not read Linux keyboard modifier state: %v", stateErr)
-				on = false
+				if shortcutHeld {
+					actions <- false
+				}
+				close(actions)
+				<-workerDone
+				l.failLinuxInputPoll(stateErr)
+				return
 			}
-			switch {
-			case on && !chordHeld:
-				chordHeld = true
-				if !isRecording {
-					logger.Info("Linux modifier chord activated: starting recording")
-					go l.startCallback()
-					isRecording = true
-				}
-			case !on && chordHeld:
-				chordHeld = false
-				if isRecording {
-					logger.Info("Linux modifier chord released: stopping recording")
-					go l.stopCallback()
-					isRecording = false
-				}
+			if held != shortcutHeld {
+				actions <- held
+				shortcutHeld = held
 			}
 		}
 	}
+}
+
+func (l *Listener) failLinuxInputPoll(err error) {
+	l.mu.Lock()
+	cb := l.registrationErrorCallback
+	l.isListening = false
+	l.stopModPoll = nil
+	l.mu.Unlock()
+	if cb != nil {
+		cb(err)
+	}
+}
+
+// modifierPollLoop is only called for modifier-only Windows shortcuts; Linux
+// uses linuxInputPollLoop for both modifier-only chords and key combinations.
+func (l *Listener) modifierPollLoop(required []xhk.Modifier, stop <-chan struct{}) {
+	_, _ = required, stop
 }

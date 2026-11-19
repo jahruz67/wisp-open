@@ -29,7 +29,7 @@
                     <div class="linux-setup-heading">
                         <div>
                             <label>Finish setup</label>
-                            <p class="hint linux-setup-intro">Complete these two items once, then WIS Free V3 is ready to dictate into any app.</p>
+                            <p class="hint linux-setup-intro">Check direct typing and keyboard access here. Your recording shortcut is configured in the app below.</p>
                             <p id="linuxTrayStatus" class="hint">The tray microphone stays visible while WIS is running, even when Settings is closed.</p>
                         </div>
                         <span id="linuxDistroBadge" class="status-badge"></span>
@@ -51,39 +51,6 @@
                         </div>
                     </div>
 
-                    <div class="setup-step">
-                        <div class="setup-step-icon">2</div>
-                        <div class="setup-step-content">
-                            <div class="setup-step-title">Hold-to-record shortcut</div>
-                            <div id="linuxShortcutStatus" class="setup-step-message">Checking the recording shortcut…</div>
-                            <p class="hint">Hold Ctrl+Super to record (red), then release to transcribe and type (yellow). The microphone returns to white when finished.</p>
-                            <div class="setup-actions">
-                                <button id="linuxShortcutButton" onclick="setupLinuxShortcut()">Check keyboard access</button>
-                            </div>
-                            <details id="linuxKeyboardAccessDetails" class="fallback-details desktop-instructions">
-                                <summary class="fallback-summary">Why keyboard access is needed</summary>
-                                <p class="hint">The Linux shortcut portal requires a non-modifier key, so it cannot bind Ctrl+Super by itself. This app checks only whether modifier keys are held; it does not capture typed keys. If access is denied, grant your account input-device access and restart the app.</p>
-                                <pre class="command-block">sudo usermod -aG input "$USER"</pre>
-                                <p class="hint">Then sign out and back in. Membership in the input group lets programs running as your user read keyboard devices.</p>
-                            </details>
-                            <details class="fallback-details desktop-instructions">
-                                <summary class="fallback-summary">Optional toggle shortcut</summary>
-                                <p class="hint">This command and the launcher's <strong>Toggle recording</strong> action start on one press and stop on the next. They do not support hold and release.</p>
-                            <div class="form-control" style="margin-top: 10px;">
-                                <div class="flex-row">
-                                    <div class="input-wrapper">
-                                        <input type="text" id="linuxPressCommand" readonly>
-                                    </div>
-                                    <button onclick="copyLinuxPressCommand()">Copy command</button>
-                                </div>
-                            </div>
-                                <p class="hint"><strong>GNOME / Ubuntu:</strong> Settings → Keyboard → View and Customize Shortcuts → Custom Shortcuts.</p>
-                                <p class="hint"><strong>KDE Plasma 6:</strong> System Settings → Keyboard → Shortcuts → Add New → Application → WIS Free V3, then assign a key to <strong>Toggle recording</strong>. You can also choose Command or Script and paste the command above.</p>
-                                <p class="hint"><strong>KDE Plasma 5:</strong> System Settings → Shortcuts → Custom Shortcuts → Edit → New → Global Shortcut → Command/URL, then paste the command above.</p>
-                                <p class="hint"><strong>Other desktops:</strong> Open Keyboard or Shortcuts settings and add a custom command.</p>
-                            </details>
-                        </div>
-                    </div>
                 </div>
             </div>
 
@@ -172,9 +139,9 @@
                 </details>
             </div>
 
-            <!-- Global Hotkey (hidden on Linux because Linux uses the system shortcut command below) -->
+            <!-- Global Hotkey -->
             <div class="section" id="shortcutSection">
-                <label>Global Hotkey</label>
+                <label>Hold-to-record shortcut</label>
                 <div class="form-control">
                     <div class="flex-row">
                         <div class="input-wrapper">
@@ -183,7 +150,17 @@
                         <button id="recordBtn" onclick="recordShortcut()">Record</button>
                     </div>
                 </div>
-                <p class="hint">Windows and macOS can listen for this shortcut directly. Modifier-only combos like ctrl+alt are supported only on Windows.</p>
+                <p id="shortcutHint" class="hint">Hold the shortcut to record; release it to transcribe and type.</p>
+                <div id="linuxShortcutStatus" class="setup-step-message" style="display: none; margin-top: 8px;">Checking keyboard access…</div>
+                <div id="linuxShortcutActions" class="setup-actions" style="display: none; margin-top: 8px;">
+                    <button id="linuxShortcutButton" onclick="setupLinuxShortcut()">Check keyboard access</button>
+                </div>
+                <details id="linuxKeyboardAccessDetails" class="fallback-details" style="display: none;">
+                    <summary class="fallback-summary">Why keyboard access is needed</summary>
+                    <p class="hint">WIS reads key state directly so the same in-app shortcut works across Linux desktops. It does not consume keypresses; choose a shortcut that does not conflict with another action. If access is denied, grant your account input-device access and restart WIS.</p>
+                    <pre class="command-block">sudo usermod -aG input "$USER"</pre>
+                    <p class="hint">Then sign out and back in. Membership in the input group gives programs running as your account read/write access to input devices.</p>
+                </details>
             </div>
 
             <div class="section-group-label">Input</div>
@@ -322,7 +299,6 @@
     <script type="module">
         let groqApiKeyVisible = false;
         let mistralApiKeyVisible = false;
-        let linuxShortcutMode = false;
         let platformOS = '';
         let configuredWhisperModel = 'whisper-large-v3-turbo';
 
@@ -374,10 +350,6 @@
 
         // Record shortcut
         window.recordShortcut = function () {
-            if (linuxShortcutMode) {
-                return;
-            }
-
             const btn = document.getElementById('recordBtn');
             const input = document.getElementById('shortcutInput');
 
@@ -403,14 +375,15 @@
                 if (e.ctrlKey) mods.push('ctrl');
                 if (e.altKey) mods.push('alt');
                 if (e.shiftKey) mods.push('shift');
-                if (winKeyActive(e)) mods.push('win');
+                if (winKeyActive(e)) mods.push('super');
 
                 let key = e.key.toLowerCase();
+                if (key.startsWith('arrow')) key = key.substring(5);
                 if (key === 'control') key = 'ctrl';
                 if (key === 'alt') key = 'alt';
                 if (key === 'shift') key = 'shift';
-                if (key === 'meta' || key === 'os') key = 'win';
-                if (e.code === 'MetaLeft' || e.code === 'MetaRight') key = 'win';
+                if (key === 'meta' || key === 'os') key = 'super';
+                if (e.code === 'MetaLeft' || e.code === 'MetaRight') key = 'super';
                 if (key === ' ') key = 'space';
 
                 const parts = new Set(mods);
@@ -424,7 +397,7 @@
                 input.value = lastShortcut;
 
                 // Finalize immediately if a non-modifier key is pressed
-                if (!['ctrl', 'alt', 'shift', 'win'].includes(key)) {
+                if (!['ctrl', 'alt', 'shift', 'super'].includes(key)) {
                     finish();
                 }
             };
@@ -435,10 +408,9 @@
                 // Finalize when keys are released if we have a valid shortcut
                 if (lastShortcut) {
                     // Check if it's a modifier-only shortcut that we should finalize
-                    const isModifierOnly = lastShortcut.split('+').every(p => ['ctrl', 'alt', 'shift', 'win'].includes(p));
+                    const isModifierOnly = lastShortcut.split('+').every(p => ['ctrl', 'alt', 'shift', 'super'].includes(p));
                     if (isModifierOnly && lastShortcut.includes('+')) {
-                        // Wait a tiny bit to see if they press another key, but usually release means they are done
-                        setTimeout(finish, 100);
+                        if (!e.ctrlKey && !e.altKey && !e.shiftKey && !winKeyActive(e)) finish();
                     } else if (!e.ctrlKey && !e.altKey && !e.shiftKey && !winKeyActive(e)) {
                         finish();
                     }
@@ -536,7 +508,11 @@
             if (!status) return;
             const el = document.getElementById('linuxShortcutStatus');
             const button = document.getElementById('linuxShortcutButton');
+            const actions = document.getElementById('linuxShortcutActions');
             const accessDetails = document.getElementById('linuxKeyboardAccessDetails');
+            el.style.display = 'block';
+            actions.style.display = 'flex';
+            if (accessDetails) accessDetails.style.display = 'block';
             el.textContent = status.message || '';
             el.className = 'setup-step-message ' + (status.ready ? 'status-ready' : 'status-needs-action');
             button.disabled = !!status.busy;
@@ -636,20 +612,11 @@
                 if (shortcutInput) {
                     shortcutInput.value = settings.shortcut || 'ctrl+super';
                 }
-                linuxShortcutMode = !!settings.linux_press_mode;
                 if (settings.linux_press_mode) {
-                    const shortcutSection = document.getElementById('shortcutSection');
                     const setupGroup = document.getElementById('linuxSetupGroup');
-                    const cmdInput = document.getElementById('linuxPressCommand');
-
-                    if (shortcutSection) shortcutSection.style.display = 'none';
+                    const shortcutHint = document.getElementById('shortcutHint');
                     if (setupGroup) setupGroup.style.display = 'block';
-
-                    if (cmdInput) {
-                        const fullCommand = settings.linux_press_command || '';
-                        cmdInput.value = fullCommand;
-                        window._linuxFullCommand = fullCommand;
-                    }
+                    if (shortcutHint) shortcutHint.textContent = 'WIS listens directly to keyboard input, so the shortcut is recorded here instead of in desktop settings. Linux requires keyboard input-device access.';
 
                     renderLinuxYdotoolStatus(settings.linux_ydotool_status);
                     renderLinuxShortcutStatus(settings.linux_shortcut_status);

@@ -3,7 +3,6 @@
 // Global state
 let currentSettings = {};
 let apiKeyVisible = true;
-let linuxShortcutMode = false;
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
@@ -30,12 +29,9 @@ async function loadSettings() {
         document.getElementById('aiPrompt').value = settings.ai_prompt || '';
         document.getElementById('startupToggle').checked = settings.startup || false;
 
-        linuxShortcutMode = !!settings.linux_press_mode;
         if (settings.linux_press_mode) {
-            const shortcutSection = document.getElementById('shortcutSection');
             const section = document.getElementById('linuxPressSection') || document.getElementById('linuxFallbackSection');
             const cmdInput = document.getElementById('linuxPressCommand');
-            if (shortcutSection) shortcutSection.style.display = 'none';
             if (section) section.style.display = 'block';
             if (cmdInput) cmdInput.value = settings.linux_press_command || '';
         }

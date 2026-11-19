@@ -59,15 +59,14 @@ func linuxShellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 }
 
-// Hold-to-record polls only modifier key state. The XDG GlobalShortcuts
-// trigger syntax requires a non-modifier key, so it cannot represent Ctrl+Super.
-// The optional desktop command above remains a separate toggle shortcut.
+// Linux hold-to-record polls keyboard state directly, so the user's shortcut
+// is recorded and configured inside the app without desktop-specific bindings.
 func (a *App) startLinuxPressDaemon() {
 	if !a.config.LinuxShortcutEnabled {
-		a.setLinuxShortcutStatus(globalshortcuts.Status{Message: "Ctrl+Super hold-to-record is disabled in this profile."})
+		a.setLinuxShortcutStatus(globalshortcuts.Status{Message: "Hold-to-record is disabled in this profile."})
 		return
 	}
-	a.startLinuxModifierShortcut()
+	a.startLinuxShortcutListener()
 }
 
 func (a *App) GetLinuxShortcutStatus() globalshortcuts.Status {
@@ -75,7 +74,7 @@ func (a *App) GetLinuxShortcutStatus() globalshortcuts.Status {
 	status := a.linuxShortcut
 	a.linuxShortcutMu.RUnlock()
 	if status.Message == "" {
-		return globalshortcuts.Status{Busy: true, Message: "Checking Ctrl+Super keyboard access…", Trigger: "Ctrl+Super"}
+		return globalshortcuts.Status{Busy: true, Message: "Checking keyboard access…"}
 	}
 	return status
 }
@@ -84,22 +83,44 @@ func (a *App) SetupLinuxShortcut() globalshortcuts.Status {
 	if a.hotkeyListener != nil {
 		a.hotkeyListener.Stop()
 	}
-	a.startLinuxModifierShortcut()
+	a.startLinuxShortcutListener()
 	return a.GetLinuxShortcutStatus()
 }
 
-func (a *App) startLinuxModifierShortcut() {
-	a.setLinuxShortcutStatus(globalshortcuts.Status{Busy: true, Message: "Checking Ctrl+Super keyboard access…", Trigger: "Ctrl+Super"})
+func (a *App) startLinuxShortcutListener() {
+	trigger := linuxShortcutLabel(a.config.Shortcut)
+	a.setLinuxShortcutStatus(globalshortcuts.Status{Busy: true, Message: "Checking keyboard access…", Trigger: trigger})
 	listener := hotkey.NewListener(a.config.Shortcut, a.StartRecording, a.StopRecording)
 	listener.SetRegistrationReadyCallback(func() {
-		a.setLinuxShortcutStatus(globalshortcuts.Status{Ready: true, Message: "Ctrl+Super is ready. Hold both keys to record; release to transcribe and type.", Trigger: "Ctrl+Super"})
+		a.setLinuxShortcutStatus(globalshortcuts.Status{Ready: true, Message: trigger + " is ready. Hold it to record; release to transcribe and type.", Trigger: trigger})
 	})
 	listener.SetRegistrationErrorCallback(func(err error) {
-		a.setLinuxShortcutStatus(globalshortcuts.Status{Message: fmt.Sprintf("Ctrl+Super is not active: %v", err), Trigger: "Ctrl+Super"})
+		a.setLinuxShortcutStatus(globalshortcuts.Status{Message: fmt.Sprintf("%s is not active: %v", trigger, err), Trigger: trigger})
 		logger.Error("Linux hold-to-record shortcut unavailable: %v", err)
 	})
 	a.hotkeyListener = listener
 	listener.Start()
+}
+
+func linuxShortcutLabel(shortcut string) string {
+	parts := strings.Split(shortcut, "+")
+	for i, part := range parts {
+		switch strings.ToLower(strings.TrimSpace(part)) {
+		case "ctrl", "control":
+			parts[i] = "Ctrl"
+		case "super", "meta", "win", "windows", "cmd", "command":
+			parts[i] = "Super"
+		case "alt", "option":
+			parts[i] = "Alt"
+		case "shift":
+			parts[i] = "Shift"
+		default:
+			if part != "" {
+				parts[i] = strings.ToUpper(part[:1]) + part[1:]
+			}
+		}
+	}
+	return strings.Join(parts, "+")
 }
 
 func (a *App) setLinuxShortcutStatus(status globalshortcuts.Status) {

@@ -55,7 +55,7 @@ If a package or daemon is missing, the app shows only the command appropriate fo
 
 ### 2. Hold-to-record shortcut
 
-WIS uses **Ctrl+Super** as the hold-to-record shortcut. Hold both keys to record, then release to transcribe and type. The Global Shortcuts portal requires a non-modifier key, so WIS reads modifier state directly from Linux keyboard input devices instead. The app checks modifier state only; it does not capture typed keys.
+WIS defaults to **Ctrl+Super**. Use the **Record** button in WIS Settings to choose another shortcut. The app listens to Linux keyboard state directly, so shortcut setup is the same in KDE, GNOME, and other desktop environments. Keypresses are not consumed; choose a combination that does not conflict with another action.
 
 - Hold the shortcut: the microphone turns **red** and records.
 - Release it: the microphone turns **yellow** while the clip is finalized, transcribed, refined, and typed into the focused app.
@@ -73,26 +73,13 @@ The **white microphone stays registered in the system tray whenever WIS is runni
 
 GNOME may require the AppIndicator extension described below to display the tray icon.
 
-### Optional toggle shortcut
-
-The command under **Optional toggle shortcut**, and KDE's native **Toggle recording** desktop action, start on one press and stop on the next. They do **not** implement hold and release.
-
-Copy the full command shown by the app. It contains the real absolute executable path and is safely quoted. Do not replace it with a guessed executable name.
-
-- GNOME / Ubuntu: **Settings → Keyboard → View and Customize Shortcuts → Custom Shortcuts**
-- KDE Plasma 6: **System Settings → Keyboard → Shortcuts → Add New → Application → WIS Free V3**, then assign a key to **Toggle recording** and click **Apply**. The launcher includes this native action; choose it rather than the action that opens Settings. Alternatively, choose **Command or Script** and paste the command.
-- KDE Plasma 5: **System Settings → Shortcuts → Custom Shortcuts → Edit → New → Global Shortcut → Command/URL**, then paste the command under **Action** and set the key under **Trigger**.
-- Other desktops: add a custom command in the desktop's keyboard or shortcut settings
-
-The optional command uses `--action=toggle` and can launch WIS from a cold start.
-
 ### KDE Plasma integration
 
 The same recording and typing backend is used on Plasma Wayland and Plasma X11. The tray uses AppIndicator/StatusNotifier integration, which Plasma supports without a GNOME extension. If the icon is hidden, expand the system tray or change its visibility in **System Tray Settings → Entries**.
 
 Use **Start with system** in WIS to start in the tray at login. You can also manage the entry in Plasma's **Autostart** settings; WIS recognizes an entry disabled there. Launchers and icons honor `XDG_DATA_HOME`, and autostart honors `XDG_CONFIG_HOME`, with the standard home-directory defaults. Package installs, source installs, and launchers refreshed by the app share the same desktop-entry generator, including the recording action and escaping for paths with spaces or special characters.
 
-WIS holds **Ctrl+Super** for recording. The launcher's **Toggle recording** action remains available as a separate optional mode. If that optional action is missing after upgrading, launch WIS once and reopen the Shortcuts settings page; WIS refreshes its per-user launcher on startup.
+WIS listens to the shortcut saved in Settings. Its keyboard shortcut does not depend on KDE shortcut configuration.
 
 ## Troubleshooting
 
@@ -121,12 +108,6 @@ The app checks the standard per-user socket, `/tmp/.ydotool_socket`, and common 
 ### The shortcut does nothing
 
 For hold-to-record, check the status in WIS Settings. If it says it cannot read `/dev/input/event*`, the current user needs input-device access. Add the user to the `input` group with the command above, sign out and back in, then restart WIS. This grants programs running as that user read/write access to all input devices.
-
-For the optional toggle command:
-
-Copy the command again from Settings. Older builds displayed the incorrect name `wisp-open`; the correct release executable is `wis-free-v3`, and current builds copy its absolute path.
-
-Run the copied command in a terminal once. If the app is already running, it should toggle recording. If it is not running, it should launch in the background and begin recording.
 
 ### The app appears not to launch
 
@@ -203,11 +184,10 @@ Before claiming a release has been tested on Plasma, run these checks in both a 
 | Check | Expected result |
 | --- | --- |
 | Launch from the application menu, then launch again | Settings opens; there is one WIS process and one tray entry. |
-| Hold **Ctrl+Super**, then release it | Red while held; yellow immediately on release and throughout transcription/refinement/typing; white after insertion. |
-| Hold Ctrl+Super long enough for keyboard auto-repeat | The app keeps recording until release. |
+| Record a shortcut in WIS Settings, hold it, and release it | Red while held; yellow immediately on release and throughout transcription/refinement/typing; white after insertion. |
+| Hold a shortcut with a trigger key long enough for keyboard auto-repeat | The app keeps recording until release. |
 | Press the shortcut again while text is still being inserted | The app stays yellow and finishes inserting the current result once. |
-| Restart WIS after enabling input-device access | Ctrl+Super is ready without beginning a recording. |
-| Optional: trigger **Toggle recording** with WIS fully exited | WIS starts in the background and records; a second press stops it. |
+| Restart WIS after enabling input-device access | The shortcut saved in Settings is ready without beginning a recording. |
 | Dictate into Kate, a browser, and an XWayland app on Wayland | Text reaches the focused field once, with the intended punctuation and keyboard layout. |
 | Change the default microphone in Plasma and record again | The selected/default device records usable audio. |
 | Open Settings from the tray, close it, and dictate again | The window hides; the app remains running and text reaches the intended app. |
@@ -218,7 +198,6 @@ Before claiming a release has been tested on Plasma, run these checks in both a 
 ## Desktop integration references
 
 - [KDE's desktop-action shortcut implementation](https://invent.kde.org/plasma/kglobalacceld/-/blob/master/src/kserviceactioncomponent.cpp)
-- [XDG Shortcuts specification](https://specifications.freedesktop.org/shortcuts/latest/)
 - [GNOME 48 Global Shortcuts support](https://release.gnome.org/48/developers/)
 - [Desktop Entry command escaping](https://specifications.freedesktop.org/desktop-entry/latest/exec-variables.html)
 - [Desktop Application Autostart specification](https://specifications.freedesktop.org/autostart/latest/)
