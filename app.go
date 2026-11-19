@@ -249,8 +249,6 @@ func (a *App) StartRecording() {
 		a.overlay.Show("Recording...")
 	}
 
-	tray.IncrementTriggerCount()
-
 	// 2. Start recorder as soon as possible
 	if a.audioRecorder == nil {
 		logger.Error("Recorder not initialized")

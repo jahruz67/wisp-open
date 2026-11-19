@@ -10,7 +10,6 @@ extern void goWISTrayQuit(void);
 
 static NSStatusItem *wisStatusItem;
 static NSMenuItem *wisStatusMenuItem;
-static NSMenuItem *wisCountMenuItem;
 static NSMenuItem *wisStartupMenuItem;
 static NSString *wisTrayLabel;
 
@@ -52,9 +51,6 @@ void wis_tray_start(const char *label, const char *shortcut, bool startup, const
         wisStatusMenuItem = [[NSMenuItem alloc] initWithTitle:@"Status: Ready" action:nil keyEquivalent:@""];
         wisStatusMenuItem.enabled = NO;
         [menu addItem:wisStatusMenuItem];
-        wisCountMenuItem = [[NSMenuItem alloc] initWithTitle:@"Shortcut detected: 0 times" action:nil keyEquivalent:@""];
-        wisCountMenuItem.enabled = NO;
-        [menu addItem:wisCountMenuItem];
         [menu addItem:NSMenuItem.separatorItem];
 
         NSMenuItem *settings = [[NSMenuItem alloc] initWithTitle:@"Settings" action:@selector(openSettings:) keyEquivalent:@""];
@@ -83,10 +79,6 @@ void wis_tray_set_status(const char *status, const void *icon, int iconLen, bool
         image.template = templateIcon;
         wisStatusItem.button.image = image;
     });
-}
-
-void wis_tray_set_trigger_count(int count) {
-    WISTrayOnMain(^{ wisCountMenuItem.title = [NSString stringWithFormat:@"Shortcut detected: %d times", count]; });
 }
 
 void wis_tray_set_startup(bool checked) {

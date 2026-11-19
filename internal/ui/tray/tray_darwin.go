@@ -10,7 +10,6 @@ package tray
 
 void wis_tray_start(const char *label, const char *shortcut, bool startup, const void *icon, int iconLen);
 void wis_tray_set_status(const char *status, const void *icon, int iconLen, bool templateIcon);
-void wis_tray_set_trigger_count(int count);
 void wis_tray_set_startup(bool checked);
 */
 import "C"
@@ -20,7 +19,6 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"unsafe"
 
 	"wis-free-v3/internal/config"
@@ -48,7 +46,6 @@ var iconTranscribingData []byte
 var (
 	darwinApp        App
 	darwinAppMu      sync.RWMutex
-	triggerCount     int32
 	onStartupChanged func(bool)
 )
 
@@ -104,11 +101,6 @@ func UpdateStatus(status string) {
 	withIcon(data, func(ptr unsafe.Pointer, length C.int) {
 		C.wis_tray_set_status(cStatus, ptr, length, C.bool(templateIcon))
 	})
-}
-
-func IncrementTriggerCount() {
-	count := atomic.AddInt32(&triggerCount, 1)
-	C.wis_tray_set_trigger_count(C.int(count))
 }
 
 func DefaultIconBytes() []byte { return iconData }

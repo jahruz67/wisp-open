@@ -15,7 +15,6 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"sync/atomic"
 
 	"wis-free-v3/internal/config"
 	"wis-free-v3/internal/logger"
@@ -49,8 +48,6 @@ var trayLabel = "wis-free-v3"
 
 // Menu item references for dynamic updates
 var statusMenuItem *systray.MenuItem
-var triggerCountItem *systray.MenuItem
-var triggerCount int32
 var iconsInitOnce sync.Once
 var startupMenuItem *systray.MenuItem
 
@@ -81,11 +78,6 @@ func onReady(app App) {
 	// Build menu structure
 	statusMenuItem = systray.AddMenuItem("Status: "+lastStatus, "Current application status")
 	statusMenuItem.Disable()
-
-	if runtime.GOOS != "windows" {
-		triggerCountItem = systray.AddMenuItem("Shortcut detected: 0 times", "Troubleshooting counter")
-		triggerCountItem.Disable()
-	}
 
 	systray.AddSeparator()
 
@@ -262,16 +254,6 @@ func statusIcon(status string) []byte {
 		return iconTranscribingData
 	}
 	return getDefaultIcon()
-}
-
-// IncrementTriggerCount increments the troubleshooting counter in the tray.
-func IncrementTriggerCount() {
-	count := atomic.AddInt32(&triggerCount, 1)
-	statusMu.Lock()
-	defer statusMu.Unlock()
-	if triggerCountItem != nil {
-		triggerCountItem.SetTitle(fmt.Sprintf("Shortcut detected: %d times", count))
-	}
 }
 
 // onExit is called when the system tray is shutting down.
