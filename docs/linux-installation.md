@@ -55,7 +55,7 @@ If a package or daemon is missing, the app shows only the command appropriate fo
 
 ### 2. Hold-to-record shortcut
 
-Click **Set up hold-to-record** and approve the desktop's shortcut dialog. Choose the recording key there; WIS suggests **Alt+Z**. Remove any old custom command bound to the same keys. WIS uses the desktop's Global Shortcuts portal to receive separate press and release events on both Wayland and X11.
+Click **Set up hold-to-record** and approve the desktop's shortcut dialog. Choose the recording key there; WIS suggests **Ctrl+Super** (Control + Command / Windows key). Remove any old custom command bound to the same keys. WIS uses the desktop's Global Shortcuts portal to receive separate press and release events on both Wayland and X11.
 
 - Hold the shortcut: the microphone turns **red** and records.
 - Release it: the microphone turns **yellow** while the clip is finalized, transcribed, refined, and typed into the focused app.

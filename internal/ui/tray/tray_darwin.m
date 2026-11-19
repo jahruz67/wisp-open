@@ -35,7 +35,7 @@ static void WISTrayOnMain(dispatch_block_t block) {
 
 void wis_tray_start(const char *label, const char *shortcut, bool startup, const void *icon, int iconLen) {
     NSString *labelValue = [NSString stringWithUTF8String:label ?: "wis-free-v3"];
-    NSString *shortcutValue = [NSString stringWithUTF8String:shortcut ?: "alt+z"];
+    NSString *shortcutValue = [NSString stringWithUTF8String:shortcut ?: "ctrl+super"];
     NSData *iconCopy = icon && iconLen > 0 ? [NSData dataWithBytes:icon length:(NSUInteger)iconLen] : nil;
     WISTrayOnMain(^{
         if (wisStatusItem) return;

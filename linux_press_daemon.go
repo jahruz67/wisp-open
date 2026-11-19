@@ -21,6 +21,9 @@ import (
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
+// XDG shortcut syntax for Ctrl+Super.
+const linuxDefaultShortcutTrigger = "CTRL+Super_L"
+
 func init() {
 	// Keep `--press` working for existing custom shortcuts. A desktop shortcut
 	// invokes a command once, so its correct, predictable behaviour is toggle
@@ -73,7 +76,7 @@ func (a *App) startLinuxPressDaemon() {
 		}
 	})
 	if a.config.LinuxShortcutEnabled {
-		go a.shortcutPortal.Start("ALT+z")
+		go a.shortcutPortal.Start(linuxDefaultShortcutTrigger)
 	}
 }
 
@@ -88,7 +91,7 @@ func (a *App) SetupLinuxShortcut() globalshortcuts.Status {
 	if a.shortcutPortal == nil {
 		return a.GetLinuxShortcutStatus()
 	}
-	return a.shortcutPortal.Configure("ALT+z")
+	return a.shortcutPortal.Configure(linuxDefaultShortcutTrigger)
 }
 
 func (a *App) stopLinuxPressDaemon() {

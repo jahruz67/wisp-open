@@ -184,7 +184,7 @@ func handleExit(app App) {
 
 // buildTooltip creates the tray icon tooltip text.
 func buildTooltip(app App) string {
-	shortcut := "Ctrl+K"
+	shortcut := config.DefaultShortcut
 	if cfg := app.GetConfig(); cfg != nil && cfg.Shortcut != "" {
 		shortcut = cfg.Shortcut
 	}

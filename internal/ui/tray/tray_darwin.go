@@ -64,7 +64,7 @@ func Start(app App) {
 	darwinAppMu.Lock()
 	darwinApp = app
 	darwinAppMu.Unlock()
-	shortcut := "alt+z"
+	shortcut := config.DefaultShortcut
 	if cfg := app.GetConfig(); cfg != nil && cfg.Shortcut != "" {
 		shortcut = cfg.Shortcut
 	}
