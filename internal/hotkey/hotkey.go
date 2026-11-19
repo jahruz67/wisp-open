@@ -15,6 +15,7 @@ type Listener struct {
 	startCallback             func()
 	stopCallback              func()
 	registrationErrorCallback func(error)
+	registrationReadyCallback func()
 	isListening               bool
 	shortcut                  string
 	hk                        *xhk.Hotkey
@@ -39,6 +40,14 @@ func NewListener(shortcut string, onStart, onStop func()) *Listener {
 func (l *Listener) SetRegistrationErrorCallback(cb func(error)) {
 	l.mu.Lock()
 	l.registrationErrorCallback = cb
+	l.mu.Unlock()
+}
+
+// SetRegistrationReadyCallback sets a callback invoked when modifier polling is
+// active and the configured modifier-only shortcut can be monitored.
+func (l *Listener) SetRegistrationReadyCallback(cb func()) {
+	l.mu.Lock()
+	l.registrationReadyCallback = cb
 	l.mu.Unlock()
 }
 
@@ -82,10 +91,11 @@ func (l *Listener) Start() {
 	}
 
 	if modOnly {
-		// WINDOWS-ONLY FEATURE: Modifier-only shortcuts (e.g. ctrl+win without a key)
-		// are only supported on Windows via modifier polling. On Linux, this is rejected.
-		if runtime.GOOS != "windows" {
-			logger.Error("Modifier-only shortcuts like %q are only supported on Windows", l.shortcut)
+		// Modifier-only shortcuts are supported through platform-specific key
+		// state polling on Windows and Linux. macOS does not expose a global
+		// modifier-state API to this application.
+		if runtime.GOOS != "windows" && runtime.GOOS != "linux" {
+			logger.Error("Modifier-only shortcuts like %q are not supported on %s", l.shortcut, runtime.GOOS)
 			l.mu.Unlock()
 			return
 		}

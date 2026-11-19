@@ -11,18 +11,16 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
-	"wis-free-v3/internal/config"
 	"wis-free-v3/internal/globalshortcuts"
+	"wis-free-v3/internal/hotkey"
 	"wis-free-v3/internal/logger"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
-
-// XDG shortcut syntax for Ctrl+Super.
-const linuxDefaultShortcutTrigger = "CTRL+Super_L"
 
 func init() {
 	// Keep `--press` working for existing custom shortcuts. A desktop shortcut
@@ -61,37 +59,56 @@ func linuxShellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 }
 
-// Hold-to-record uses real Activated/Deactivated events from the desktop. The
-// command above remains an explicitly labelled optional toggle shortcut.
+// Hold-to-record polls only modifier key state. The XDG GlobalShortcuts
+// trigger syntax requires a non-modifier key, so it cannot represent Ctrl+Super.
+// The optional desktop command above remains a separate toggle shortcut.
 func (a *App) startLinuxPressDaemon() {
-	a.shortcutPortal = globalshortcuts.New(a.StartRecording, a.StopRecording, func(status globalshortcuts.Status) {
-		if status.Ready && !a.config.LinuxShortcutEnabled {
-			a.config.LinuxShortcutEnabled = true
-			if err := config.Save(a.config, ""); err != nil {
-				logger.Error("Could not save Linux shortcut preference: %v", err)
-			}
-		}
-		if a.ctx != nil {
-			wailsruntime.EventsEmit(a.ctx, "linux:shortcut-status", status)
-		}
-	})
-	if a.config.LinuxShortcutEnabled {
-		go a.shortcutPortal.Start(linuxDefaultShortcutTrigger)
+	if !a.config.LinuxShortcutEnabled {
+		a.setLinuxShortcutStatus(globalshortcuts.Status{Message: "Ctrl+Super hold-to-record is disabled in this profile."})
+		return
 	}
+	a.startLinuxModifierShortcut()
 }
 
 func (a *App) GetLinuxShortcutStatus() globalshortcuts.Status {
-	if a.shortcutPortal == nil {
-		return globalshortcuts.Status{Message: "Shortcut service is starting…"}
+	a.linuxShortcutMu.RLock()
+	status := a.linuxShortcut
+	a.linuxShortcutMu.RUnlock()
+	if status.Message == "" {
+		return globalshortcuts.Status{Busy: true, Message: "Checking Ctrl+Super keyboard access…", Trigger: "Ctrl+Super"}
 	}
-	return a.shortcutPortal.Status()
+	return status
 }
 
 func (a *App) SetupLinuxShortcut() globalshortcuts.Status {
-	if a.shortcutPortal == nil {
-		return a.GetLinuxShortcutStatus()
+	if a.hotkeyListener != nil {
+		a.hotkeyListener.Stop()
 	}
-	return a.shortcutPortal.Configure(linuxDefaultShortcutTrigger)
+	a.startLinuxModifierShortcut()
+	return a.GetLinuxShortcutStatus()
+}
+
+func (a *App) startLinuxModifierShortcut() {
+	a.setLinuxShortcutStatus(globalshortcuts.Status{Busy: true, Message: "Checking Ctrl+Super keyboard access…", Trigger: "Ctrl+Super"})
+	listener := hotkey.NewListener(a.config.Shortcut, a.StartRecording, a.StopRecording)
+	listener.SetRegistrationReadyCallback(func() {
+		a.setLinuxShortcutStatus(globalshortcuts.Status{Ready: true, Message: "Ctrl+Super is ready. Hold both keys to record; release to transcribe and type.", Trigger: "Ctrl+Super"})
+	})
+	listener.SetRegistrationErrorCallback(func(err error) {
+		a.setLinuxShortcutStatus(globalshortcuts.Status{Message: fmt.Sprintf("Ctrl+Super is not active: %v", err), Trigger: "Ctrl+Super"})
+		logger.Error("Linux hold-to-record shortcut unavailable: %v", err)
+	})
+	a.hotkeyListener = listener
+	listener.Start()
+}
+
+func (a *App) setLinuxShortcutStatus(status globalshortcuts.Status) {
+	a.linuxShortcutMu.Lock()
+	a.linuxShortcut = status
+	a.linuxShortcutMu.Unlock()
+	if a.ctx != nil {
+		wailsruntime.EventsEmit(a.ctx, "linux:shortcut-status", status)
+	}
 }
 
 func (a *App) stopLinuxPressDaemon() {

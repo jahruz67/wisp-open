@@ -26,9 +26,9 @@ Do not use `dpkg -i` by itself: it does not resolve dependencies. If you already
 Launch **WIS Free V3** from the application menu. The Settings window now opens on a normal launch and shows a two-step Linux checklist:
 
 1. Confirm that **Direct typing** says it is ready. Packaged installs start the included user service automatically. If it is not ready, the app identifies the missing package or stopped service and shows the command for the detected distribution.
-2. Click **Set up hold-to-record** and approve the desktop's shortcut dialog. Hold the chosen key to record (red), release to transcribe and type (yellow), and wait for the microphone to return to white before recording again.
+2. Hold **Ctrl+Super** to record (red), then release to transcribe and type (yellow). Wait for the microphone to return to white before recording again. If keyboard access is denied, the status explains how to enable it.
 
-Enable **Run on System Startup** to launch in the tray at login and restore the approved shortcut. Hold-to-record uses the Global Shortcuts portal on KDE Plasma or GNOME 48+. GNOME also needs its AppIndicator extension to display tray icons. The command and KDE **Toggle recording** action are optional press-once/press-again alternatives. See the [Linux setup instructions](docs/linux-installation.md#2-hold-to-record-shortcut).
+Enable **Run on System Startup** to launch in the tray at login. On Linux, the app reads modifier state from keyboard input devices because the desktop shortcut portal requires a non-modifier key. GNOME also needs its AppIndicator extension to display tray icons. The command and KDE **Toggle recording** action are optional press-once/press-again alternatives. See the [Linux setup instructions](docs/linux-installation.md#2-hold-to-record-shortcut).
 
 No reboot is normally required. A logout/login is only needed if `/dev/uinput` permissions do not refresh after installation.
 

@@ -18,7 +18,7 @@ Icon=%s
 StartupWMClass=wis-free-v3
 StartupNotify=false
 Terminal=false
-Categories=Utility;Audio;
+Categories=Utility;AudioVideo;
 Keywords=dictation;speech;voice;transcription;whisper;
 Actions=ToggleRecording;
 

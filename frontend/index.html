@@ -56,14 +56,19 @@
                         <div class="setup-step-content">
                             <div class="setup-step-title">Hold-to-record shortcut</div>
                             <div id="linuxShortcutStatus" class="setup-step-message">Checking the recording shortcut…</div>
-                            <p class="hint">Hold the shortcut to record (red), then release to transcribe and type (yellow). The microphone returns to white when finished.</p>
+                            <p class="hint">Hold Ctrl+Super to record (red), then release to transcribe and type (yellow). The microphone returns to white when finished.</p>
                             <div class="setup-actions">
-                                <button id="linuxShortcutButton" onclick="setupLinuxShortcut()">Set up hold-to-record</button>
+                                <button id="linuxShortcutButton" onclick="setupLinuxShortcut()">Check keyboard access</button>
                             </div>
-                            <p class="hint">Approve the desktop's shortcut dialog once. Your binding is restored at login when Run on System Startup is enabled. Remove any old command shortcut using the same keys.</p>
+                            <details id="linuxKeyboardAccessDetails" class="fallback-details desktop-instructions">
+                                <summary class="fallback-summary">Why keyboard access is needed</summary>
+                                <p class="hint">The Linux shortcut portal requires a non-modifier key, so it cannot bind Ctrl+Super by itself. This app checks only whether modifier keys are held; it does not capture typed keys. If access is denied, grant your account input-device access and restart the app.</p>
+                                <pre class="command-block">sudo usermod -aG input "$USER"</pre>
+                                <p class="hint">Then sign out and back in. Membership in the input group lets programs running as your user read keyboard devices.</p>
+                            </details>
                             <details class="fallback-details desktop-instructions">
                                 <summary class="fallback-summary">Optional toggle shortcut</summary>
-                                <p class="hint">This command and the launcher's <strong>Toggle recording</strong> action start on one press and stop on the next. They do not support hold and release. Use the setup button above for hold-to-record.</p>
+                                <p class="hint">This command and the launcher's <strong>Toggle recording</strong> action start on one press and stop on the next. They do not support hold and release.</p>
                             <div class="form-control" style="margin-top: 10px;">
                                 <div class="flex-row">
                                     <div class="input-wrapper">
@@ -531,10 +536,12 @@
             if (!status) return;
             const el = document.getElementById('linuxShortcutStatus');
             const button = document.getElementById('linuxShortcutButton');
+            const accessDetails = document.getElementById('linuxKeyboardAccessDetails');
             el.textContent = status.message || '';
             el.className = 'setup-step-message ' + (status.ready ? 'status-ready' : 'status-needs-action');
             button.disabled = !!status.busy;
-            button.textContent = status.busy ? 'Waiting for permission…' : (status.ready ? 'Change shortcut' : 'Set up hold-to-record');
+            button.textContent = status.busy ? 'Checking…' : 'Check keyboard access';
+            if (accessDetails && !status.ready && !status.busy) accessDetails.open = true;
         }
 
         function renderLinuxTrayStatus(status) {
@@ -547,7 +554,7 @@
         window.setupLinuxShortcut = async function () {
             const button = document.getElementById('linuxShortcutButton');
             button.disabled = true;
-            button.textContent = 'Waiting for permission…';
+            button.textContent = 'Checking…';
             try {
                 renderLinuxShortcutStatus(await window.go.main.App.SetupLinuxShortcut());
             } catch (err) {

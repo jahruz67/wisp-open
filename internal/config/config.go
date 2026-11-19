@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -44,7 +45,7 @@ type Config struct {
 	History              []HistoryItem `json:"history"`
 }
 
-const CurrentConfigVersion = 2
+const CurrentConfigVersion = 3
 const MaxHistoryItems = 100
 
 // saveMu protects concurrent writes to the config file.
@@ -53,16 +54,17 @@ var saveMu sync.Mutex
 // DefaultConfig returns a new configuration with sensible default values.
 func DefaultConfig() *Config {
 	return &Config{
-		Version:          CurrentConfigVersion,
-		GroqAPIKey:       "",
-		MistralAPIKey:    "",
-		Shortcut:         DefaultShortcut,
-		WhisperModel:     DefaultWhisperModel,
-		AIModel:          DefaultAIModel,
-		AIPrompt:         DefaultAIPrompt,
-		Language:         DefaultLanguage,
-		MicrophoneDevice: nil,
-		History:          []HistoryItem{},
+		Version:              CurrentConfigVersion,
+		GroqAPIKey:           "",
+		MistralAPIKey:        "",
+		Shortcut:             DefaultShortcut,
+		LinuxShortcutEnabled: true,
+		WhisperModel:         DefaultWhisperModel,
+		AIModel:              DefaultAIModel,
+		AIPrompt:             DefaultAIPrompt,
+		Language:             DefaultLanguage,
+		MicrophoneDevice:     nil,
+		History:              []HistoryItem{},
 	}
 }
 
@@ -96,7 +98,14 @@ func (c *Config) migrate() {
 		c.WhisperModel = DefaultVoxtralModel
 	}
 	if c.Version < CurrentConfigVersion {
-		// Migration logic for future versions goes here
+		// alt+z was the previous default. Move existing installations to the
+		// new Ctrl+Super default, and enable the Linux hold shortcut by default.
+		if c.Version < 3 {
+			if strings.EqualFold(strings.TrimSpace(c.Shortcut), "alt+z") {
+				c.Shortcut = DefaultShortcut
+			}
+			c.LinuxShortcutEnabled = true
+		}
 		c.Version = CurrentConfigVersion
 	}
 }

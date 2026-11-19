@@ -31,6 +31,8 @@ type App struct {
 	audioRecorder     *recorder.AudioRecorder
 	hotkeyListener    *hotkey.Listener
 	shortcutPortal    *globalshortcuts.Manager
+	linuxShortcutMu   sync.RWMutex
+	linuxShortcut     globalshortcuts.Status
 	transcriber       *transcriber.Client
 	config            *config.Config
 	overlay           platform.Overlay
@@ -766,8 +768,8 @@ func (a *App) startupHeadless() {
 		logger.Error("Failed to ensure desktop file: %v", err)
 	}
 
-	// Linux hold-to-record is registered through the desktop portal after this
-	// initialization. Other platforms keep their native listeners.
+	// Linux uses modifier-state polling for the modifier-only Ctrl+Super default.
+	// Other platforms keep their native shortcut listeners.
 	if runtime.GOOS != "linux" {
 		a.hotkeyListener = hotkey.NewListener(a.config.Shortcut, a.StartRecording, a.StopRecording)
 		a.hotkeyListener.Start()
@@ -777,7 +779,7 @@ func (a *App) startupHeadless() {
 		if err := startLinuxDirectTypingService(false); err != nil {
 			logger.Info("Linux direct-typing service was not auto-started: %v", err)
 		}
-		logger.Info("Linux hold-to-record uses the desktop Global Shortcuts portal")
+		logger.Info("Linux hold-to-record polls Ctrl+Super modifier state")
 	}
 
 	logger.Info("Components initialized successfully!")
