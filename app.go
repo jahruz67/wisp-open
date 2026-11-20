@@ -66,6 +66,7 @@ func (a *App) ShowSettings() {
 	if a.ctx != nil {
 		platform.SetSettingsWindowVisible(true)
 		wailsruntime.WindowShow(a.ctx)
+		wailsruntime.EventsEmit(a.ctx, "settings:opened")
 	}
 }
 
@@ -769,7 +770,7 @@ func (a *App) startupHeadless() {
 	}
 
 	// Ensure desktop integration for Linux custom shortcuts and tray metadata.
-	if err := platform.EnsureDesktopFile(tray.DefaultIconBytes()); err != nil {
+	if err := platform.EnsureDesktopFile(appIcon); err != nil {
 		logger.Error("Failed to ensure desktop file: %v", err)
 	}
 

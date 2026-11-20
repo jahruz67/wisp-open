@@ -9,12 +9,8 @@ import (
 	_ "embed"
 	"encoding/binary"
 	"fmt"
-	"image"
-	"image/color"
-	"image/png"
 	"runtime"
 	"strings"
-	"sync"
 
 	"wis-free-v3/internal/config"
 	"wis-free-v3/internal/logger"
@@ -48,7 +44,6 @@ var trayLabel = "wis-free-v3"
 
 // Menu item references for dynamic updates
 var statusMenuItem *systray.MenuItem
-var iconsInitOnce sync.Once
 var startupMenuItem *systray.MenuItem
 
 // onStartupChanged is called when the tray startup menu item is toggled.
@@ -67,7 +62,6 @@ func appDisplayName(app App) string {
 func onReady(app App) {
 	statusMu.Lock()
 	defer statusMu.Unlock()
-	initDynamicIcons()
 	trayLabel = appDisplayName(app)
 
 	// Configure tray icon and tooltip
@@ -184,7 +178,6 @@ func buildTooltip(app App) string {
 }
 
 func getDefaultIcon() []byte {
-	initDynamicIcons()
 	if runtime.GOOS == "linux" {
 		return iconPNGData
 	}
@@ -246,7 +239,6 @@ func UpdateStatus(status string) {
 }
 
 func statusIcon(status string) []byte {
-	initDynamicIcons()
 	if strings.Contains(status, "Recording") {
 		return iconRecordingData
 	}
@@ -261,78 +253,3 @@ func onExit() {
 	logger.Info("System tray terminated")
 }
 
-func initDynamicIcons() {
-	iconsInitOnce.Do(func() {
-		white := color.RGBA{R: 255, G: 255, B: 255, A: 255}
-		red := color.RGBA{R: 255, G: 59, B: 48, A: 255}
-		yellow := color.RGBA{R: 255, G: 204, B: 0, A: 255}
-
-		iconPNGData = createMicPNG(white)
-		iconRecordingData = createMicPNG(red)
-		iconTranscribingData = createMicPNG(yellow)
-	})
-}
-
-func createMicPNG(c color.Color) []byte {
-	const S = 128 // canvas size
-	img := image.NewRGBA(image.Rect(0, 0, S, S))
-	// All pixels are transparent by default (new RGBA starts with 0 alpha).
-
-	cx, cy := S/2, S/2 // center (64, 50)
-
-	// Let's draw the microphone parts
-	for y := 0; y < S; y++ {
-		for x := 0; x < S; x++ {
-			drawPixel := false
-
-			// 1. Capsule Body (Rounded Rectangle)
-			// Capsule center is X=64, Y=50. Width=28 (radius 14), height of straight part = 20 (Y from 40 to 60)
-			if x >= 50 && x <= 78 && y >= 40 && y <= 60 {
-				drawPixel = true
-			} else if y < 40 {
-				// Top cap: center (64, 40), radius 14
-				dx := float64(x - cx)
-				dy := float64(y - 40)
-				if dx*dx+dy*dy <= 196 { // 14^2
-					drawPixel = true
-				}
-			} else if y > 60 && y <= 74 {
-				// Bottom cap: center (64, 60), radius 14
-				dx := float64(x - cx)
-				dy := float64(y - 60)
-				if dx*dx+dy*dy <= 196 {
-					drawPixel = true
-				}
-			}
-
-			// 2. U-stand
-			// Center of U-stand circle is (64, 50).
-			// Outer radius = 30, inner radius = 24 (thickness 6)
-			// Only draw for Y >= 50 and Y <= 80
-			dx := float64(x - cx)
-			dy := float64(y - cy)
-			distSq := dx*dx + dy*dy
-			if y >= 50 && y <= 80 && distSq >= 576 && distSq <= 900 { // 24^2 to 30^2
-				drawPixel = true
-			}
-
-			// 3. Stem (Vertical line from Y=80 to 100, X=62 to 66)
-			if x >= 62 && x <= 66 && y >= 80 && y <= 100 {
-				drawPixel = true
-			}
-
-			// 4. Base (Horizontal line at Y=100 to 104, X=40 to 88)
-			if x >= 40 && x <= 88 && y >= 100 && y <= 104 {
-				drawPixel = true
-			}
-
-			if drawPixel {
-				img.Set(x, y, c)
-			}
-		}
-	}
-
-	var buf bytes.Buffer
-	_ = png.Encode(&buf, img)
-	return buf.Bytes()
-}

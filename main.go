@@ -35,6 +35,9 @@ var windowBackground = &options.RGBA{R: 11, G: 15, B: 26, A: 255}
 //go:embed all:frontend/dist
 var assets embed.FS
 
+//go:embed build/appicon.png
+var appIcon []byte
+
 // Global lock file handle for single instance management
 var instanceLock *os.File
 

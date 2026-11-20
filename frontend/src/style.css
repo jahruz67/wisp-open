@@ -1,34 +1,84 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
-
+/* Millennium-inspired web theme: smoked glass, enamel panels and blue gel controls.
+   Design reference: https://github.com/team-spotube/millennium */
 :root {
-    --bg:           #111113;
-    --surface:      #1a1a1e;
-    --surface-2:    #222226;
-    --border:       rgba(255, 255, 255, 0.07);
-    --border-hover: rgba(255, 255, 255, 0.13);
-    --text:         #e8e8ea;
-    --text-2:       #8a8a90;
-    --text-3:       #555560;
-    --accent:       #e8622a;
-    --accent-dim:   rgba(232, 98, 42, 0.15);
-    --accent-hover: #f07040;
-    --green:        #3dba6e;
+    --bg:           #101925;
+    --surface:      #1d2a3a;
+    --surface-top:  #29394d;
+    --surface-2:    #152131;
+    --border:       #3a4d63;
+    --border-hover: #607c99;
+    --text:         #edf4fc;
+    --text-2:       #b3c3d7;
+    --text-3:       #94aac3;
+    --accent:       #8ac6ff;
+    --accent-dim:   rgba(87, 166, 255, 0.18);
+    --accent-hover: #b6ddff;
+    --gel-top:      #1f5ca8;
+    --gel-bottom:   #154a9b;
+    --gel-border:   #619cde;
+    --gel-shine:    rgba(255, 255, 255, 0.08);
+    --bevel:        rgba(255, 255, 255, 0.12);
+    --shadow:       rgba(0, 8, 22, 0.3);
+    --green:        #7fdaa7;
     --green-dim:    rgba(61, 186, 110, 0.12);
-    --red:          #e05252;
+    --red:          #ff999f;
     --red-dim:      rgba(224, 82, 82, 0.12);
-    --radius:       10px;
+    --radius:       12px;
     --radius-sm:    7px;
-    --mistral:      #8a5cf0;
+    --mistral:      #c4afff;
     --mistral-dim:  rgba(138, 92, 240, 0.15);
     color-scheme: dark;
 }
 
+@media (prefers-color-scheme: light) {
+    :root {
+        --bg:           #e4eaf2;
+        --surface:      #f4f7fb;
+        --surface-top:  #ffffff;
+        --surface-2:    #eaf0f7;
+        --border:       #bdcad9;
+        --border-hover: #8a9fb8;
+        --text:         #203047;
+        --text-2:       #52647b;
+        --text-3:       #61748c;
+        --accent:       #1859a7;
+        --accent-dim:   rgba(36, 112, 211, 0.15);
+        --accent-hover: #10447e;
+        --bevel:        rgba(255, 255, 255, 0.95);
+        --shadow:       rgba(39, 62, 91, 0.12);
+        --green:        #247447;
+        --red:          #b52e3c;
+        --mistral:      #7142b4;
+        color-scheme: light;
+    }
+}
+
 * { box-sizing: border-box; }
 
+.icon-sprite {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.ui-icon {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    vertical-align: middle;
+}
+
 body {
-    background: var(--bg);
+    background: radial-gradient(ellipse at 50% 0, var(--accent-dim), transparent 65%) var(--bg);
     color: var(--text);
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
     font-size: 14px;
     margin: 0;
     padding: 0;
@@ -51,6 +101,15 @@ h1 {
     color: var(--text);
     margin: 0;
     letter-spacing: -0.02em;
+    text-shadow: 0 1px 1px var(--shadow);
+}
+
+#appVersion {
+    padding: 3px 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    box-shadow: inset 0 1px 3px var(--shadow), 0 1px 0 var(--bevel);
 }
 
 .flex-between {
@@ -68,11 +127,12 @@ h1 {
 
 /* Section cards */
 .section {
-    background: var(--surface);
+    background: linear-gradient(160deg, var(--surface-top), var(--surface) 55%);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 20px 22px;
     margin-bottom: 10px;
+    box-shadow: inset 0 1px 0 var(--bevel), 0 2px 4px var(--shadow);
     transition: border-color 0.15s ease;
 }
 
@@ -115,13 +175,14 @@ textarea {
     outline: none;
     -webkit-appearance: none;
     appearance: none;
+    box-shadow: inset 0 2px 4px var(--shadow), 0 1px 0 var(--bevel);
 }
 
 input:focus,
 select:focus,
 textarea:focus {
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-dim);
+    box-shadow: inset 0 1px 3px var(--shadow), 0 0 0 3px var(--accent-dim);
 }
 
 input::placeholder,
@@ -131,7 +192,7 @@ textarea::placeholder {
 
 /* Custom select arrow */
 select {
-    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23555560' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='4 6 8 10 12 6'%3e%3c/polyline%3e%3c/svg%3e");
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%237d94af' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='4 6 8 10 12 6'%3e%3c/polyline%3e%3c/svg%3e");
     background-repeat: no-repeat;
     background-position: right 11px center;
     background-size: 14px;
@@ -157,6 +218,42 @@ input[type="checkbox"] {
     cursor: pointer;
     border-radius: 4px;
     flex-shrink: 0;
+}
+
+/* Retain the native checkbox interaction while giving startup a gel switch. */
+#startupToggle {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 44px;
+    height: 24px;
+    margin: 0;
+    border: 1px solid var(--border-hover);
+    border-radius: 999px;
+    background: var(--surface-2);
+    box-shadow: inset 0 2px 4px var(--shadow), 0 1px 0 var(--bevel);
+    transition: background-color 0.15s ease;
+}
+
+#startupToggle::before {
+    content: '';
+    display: block;
+    width: 18px;
+    height: 18px;
+    margin: 2px;
+    border: 1px solid #b7c7d9;
+    border-radius: 50%;
+    background: linear-gradient(#fff, #d7e2ef);
+    box-shadow: 0 1px 3px var(--shadow);
+    transition: transform 0.15s ease;
+}
+
+#startupToggle:checked {
+    background: linear-gradient(var(--gel-top), var(--gel-bottom));
+    border-color: var(--gel-border);
+}
+
+#startupToggle:checked::before {
+    transform: translateX(20px);
 }
 
 /* Form control width */
@@ -186,11 +283,14 @@ input[type="checkbox"] {
     cursor: pointer;
     padding: 2px !important;
     font-size: 15px;
-    opacity: 0.35;
+    opacity: 0.7;
     transition: opacity 0.15s;
     line-height: 1;
     display: flex;
     align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
 }
 
 .eye-btn:hover {
@@ -199,42 +299,67 @@ input[type="checkbox"] {
     box-shadow: none !important;
 }
 
+.eye-btn:active:not(:disabled) {
+    transform: translateY(-50%);
+}
+
 /* Buttons */
 button {
-    background: var(--accent);
+    background: linear-gradient(to bottom, var(--gel-shine), transparent 50%),
+        linear-gradient(to bottom, var(--gel-top), var(--gel-bottom));
     color: #fff;
-    border: none;
-    padding: 9px 16px;
+    border: 1px solid var(--gel-border);
+    padding: 8px 15px;
     border-radius: var(--radius-sm);
     cursor: pointer;
     font-family: inherit;
     font-weight: 500;
     font-size: 13.5px;
-    transition: background 0.15s ease, transform 0.1s ease;
+    text-shadow: 0 1px 1px rgba(0, 28, 73, 0.5);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45),
+        inset 0 -1px 0 rgba(0, 25, 73, 0.3), 0 2px 3px var(--shadow);
+    transition: filter 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
     white-space: nowrap;
     flex-shrink: 0;
 }
 
-button:hover {
-    background: var(--accent-hover);
-    transform: none;
-    box-shadow: none;
+button:hover:not(:disabled) {
+    filter: brightness(1.1);
 }
 
-button:active {
-    transform: scale(0.97);
+button:active:not(:disabled) {
+    transform: translateY(1px);
+    box-shadow: inset 0 2px 4px var(--shadow);
+}
+
+button:focus-visible,
+summary:focus-visible,
+a:focus-visible,
+#startupToggle:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+}
+
+button:disabled,
+select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+a {
+    color: var(--accent);
+    text-underline-offset: 3px;
 }
 
 .btn-secondary {
-    background: var(--surface-2);
+    background: linear-gradient(var(--surface-top), var(--surface-2));
     border: 1px solid var(--border-hover);
-    color: var(--text-2);
+    color: var(--text);
+    text-shadow: none;
 }
 
 .btn-secondary:hover {
-    background: var(--surface-2);
-    color: var(--text);
-    border-color: rgba(255, 255, 255, 0.2);
+    border-color: var(--accent);
 }
 
 .btn-link {
@@ -247,6 +372,7 @@ button:active {
     text-decoration: none;
     opacity: 0.75;
     min-height: 0;
+    text-shadow: none;
 }
 
 .btn-link:hover {
@@ -261,6 +387,7 @@ button:active {
     color: var(--red) !important;
     box-shadow: none !important;
     font-size: 13px !important;
+    text-shadow: none;
 }
 
 .btn-danger:hover {
@@ -273,14 +400,14 @@ button:active {
     position: fixed;
     bottom: 24px;
     right: 24px;
-    background: var(--surface-2);
+    background: linear-gradient(var(--surface-top), var(--surface));
     border: 1px solid var(--border-hover);
     color: var(--green);
     padding: 10px 18px;
     border-radius: var(--radius);
     font-weight: 500;
     font-size: 13px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    box-shadow: inset 0 1px 0 var(--bevel), 0 8px 24px var(--shadow);
     transform: translateY(16px);
     opacity: 0;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -307,6 +434,7 @@ button:active {
     border-radius: var(--radius-sm);
     margin-bottom: 6px;
     transition: border-color 0.15s;
+    box-shadow: inset 0 1px 3px var(--shadow);
 }
 
 .history-item:hover {
@@ -329,6 +457,17 @@ button:active {
     font-weight: 500;
 }
 
+#connectionStatus::before {
+    content: '';
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    margin-right: 8px;
+    border-radius: 50%;
+    background: currentColor;
+    vertical-align: 1px;
+}
+
 /* Installed whisper card */
 #whisperInstalled > div {
     border-radius: var(--radius-sm) !important;
@@ -336,15 +475,10 @@ button:active {
 
 /* Install button override */
 #installBtn {
-    background: var(--accent) !important;
     border-radius: var(--radius-sm) !important;
     font-size: 14px !important;
     padding: 11px 20px !important;
     width: 100%;
-}
-
-#installBtn:hover {
-    background: var(--accent-hover) !important;
 }
 
 /* Offline Whisper section separator */
@@ -378,16 +512,11 @@ button:active {
 }
 
 .api-keys-summary::after {
-    content: '\25B6';
-    font-size: 10px;
-    color: var(--text-3);
-    transition: transform 0.15s ease;
-    display: inline-block;
     margin-left: 8px;
 }
 
 .api-keys-details[open] > .api-keys-summary::after {
-    transform: rotate(90deg);
+    transform: rotate(45deg);
 }
 
 .api-keys-summary:hover {
@@ -441,7 +570,7 @@ select option[data-provider="local"]::before {
 }
 
 .linux-setup-card {
-    border-color: rgba(232, 98, 42, 0.28);
+    border-color: var(--border-hover);
 }
 
 .linux-setup-heading {
@@ -473,6 +602,8 @@ select option[data-provider="local"]::before {
     font-size: 11px;
     padding: 4px 9px;
     flex-shrink: 0;
+    background: var(--surface-2);
+    box-shadow: inset 0 1px 3px var(--shadow), 0 1px 0 var(--bevel);
 }
 
 .setup-step {
@@ -499,11 +630,19 @@ select option[data-provider="local"]::before {
     font-size: 12px;
     font-weight: 600;
     flex-shrink: 0;
+    border: 1px solid var(--border);
+    box-shadow: inset 0 1px 0 var(--bevel), 0 1px 2px var(--shadow);
 }
 
 .setup-step-icon.step-ready {
     background: var(--green-dim);
     color: var(--green);
+}
+
+.setup-step-icon .ui-icon {
+    width: 16px;
+    height: 16px;
+    stroke-width: 2;
 }
 
 .setup-step-content {
@@ -579,15 +718,11 @@ select option[data-provider="local"]::before {
 }
 
 .fallback-summary::before {
-    content: '\25B6';
-    font-size: 10px;
-    color: var(--text-3);
-    transition: transform 0.15s ease;
-    display: inline-block;
+    margin-right: 2px;
 }
 
 .fallback-details[open] > .fallback-summary::before {
-    transform: rotate(90deg);
+    transform: rotate(45deg);
 }
 
 .fallback-summary:hover {
@@ -617,15 +752,54 @@ select option[data-provider="local"]::before {
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.07em;
-    color: var(--text-3);
+    color: var(--text-2);
     margin: 22px 0 8px;
 }
 
+/* Native disclosures keep setup accessible by pointer and keyboard. */
+.setup-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+}
+
+.setup-summary::-webkit-details-marker {
+    display: none;
+}
+
+.setup-summary::before,
+.api-keys-summary::after,
+.fallback-summary::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(-45deg);
+    flex-shrink: 0;
+    transition: transform 0.15s ease;
+}
+
+.setup-group[open] > .setup-summary::before {
+    transform: rotate(45deg);
+}
+
 /* Scrollbar */
-::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-    background: var(--surface-2);
+    background: var(--border-hover);
+    border: 2px solid var(--bg);
     border-radius: 10px;
 }
-::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
+::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        transition: none !important;
+    }
+}

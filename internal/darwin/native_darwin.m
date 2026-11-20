@@ -153,7 +153,7 @@ bool wis_is_in_startup(void) {
 - (void)drawRect:(NSRect)dirtyRect {
     (void)dirtyRect;
     NSRect bounds = self.bounds;
-    [[NSColor colorWithCalibratedRed:0.043 green:0.059 blue:0.102 alpha:0.94] setFill];
+    [[NSColor colorWithSRGBRed:0.063 green:0.098 blue:0.145 alpha:0.94] setFill];
     [[NSBezierPath bezierPathWithRoundedRect:bounds xRadius:23 yRadius:23] fill];
 
     BOOL processing = [self.mode hasPrefix:@"Transcribing"] || [self.mode hasPrefix:@"Processing"] || [self.mode hasPrefix:@"Typing"];
@@ -162,7 +162,9 @@ bool wis_is_in_startup(void) {
     CGFloat gap = processing ? 6.0 : 4.0;
     CGFloat total = count * width + (count - 1) * gap;
     CGFloat start = (NSWidth(bounds) - total) / 2.0;
-    NSColor *barColor = processing ? [NSColor colorWithSRGBRed:1 green:0.65 blue:0 alpha:1] : NSColor.whiteColor;
+    NSColor *barColor = processing
+        ? [NSColor colorWithSRGBRed:1 green:0.8 blue:0 alpha:1]
+        : [NSColor colorWithSRGBRed:0.929 green:0.957 blue:0.988 alpha:1];
     [barColor setFill];
     for (NSInteger i = 0; i < count; i++) {
         double wave = fabs(sin(self.phase + i * (processing ? 0.45 : 0.8)));

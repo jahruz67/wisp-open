@@ -52,7 +52,9 @@ var (
 	procFillRgn                    = gdi32.NewProc("FillRgn")
 	procCreateCompatibleDC         = gdi32.NewProc("CreateCompatibleDC")
 	procCreateCompatibleBitmap     = gdi32.NewProc("CreateCompatibleBitmap")
-	procBitBlt                     = gdi32.NewProc("BitBlt")
+	procStretchBlt                 = gdi32.NewProc("StretchBlt")
+	procSetStretchBltMode          = gdi32.NewProc("SetStretchBltMode")
+	procSetBrushOrgEx              = gdi32.NewProc("SetBrushOrgEx")
 	procDeleteDC                   = gdi32.NewProc("DeleteDC")
 )
 
@@ -81,13 +83,16 @@ const (
 )
 
 const (
-	COLOR_BG_DARK    = 0x1A0F0B // Deep dark background (BGR for #0b0f1a)
+	COLOR_BG_DARK    = 0x251910 // Smoked navy (BGR for #101925)
 	COLOR_MIC_RED    = 0x4545FF // Red for recording (BGR)
 	COLOR_MIC_GREEN  = 0x50C850 // Green for ready
-	COLOR_MIC_ORANGE = 0x00A5FF // Orange for processing
-	COLOR_WHITE      = 0xFFFFFF
+	COLOR_MIC_ORANGE = 0x00CCFF // Processing gold, matching the tray icon
+	COLOR_WHITE      = 0xFCF4ED // Pearl white (BGR for #edf4fc)
 	COLOR_GRAY       = 0x808080
 )
+
+// Supersample existing waveforms so rounded bars retain smooth edges.
+const overlayRenderScale = 4
 
 // Overlay manages a transparent overlay window
 type Overlay struct {
@@ -209,7 +214,7 @@ func (o *Overlay) run() {
 
 	fontName := syscall.StringToUTF16Ptr("Segoe UI")
 	fontRec, _, _ := procCreateFontW.Call(
-		18, 0, 0, 0, 600,
+		18*overlayRenderScale, 0, 0, 0, 600,
 		0, 0, 0, 0, 0, 0, 0, 0,
 		uintptr(unsafe.Pointer(fontName)),
 	)
@@ -318,7 +323,7 @@ func overlayWndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uin
 
 		// Double buffering: Create a memory DC to draw off-screen first
 		memDC, _, _ := procCreateCompatibleDC.Call(hdc)
-		memBitmap, _, _ := procCreateCompatibleBitmap.Call(hdc, 120, 46)
+		memBitmap, _, _ := procCreateCompatibleBitmap.Call(hdc, 120*overlayRenderScale, 46*overlayRenderScale)
 		oldBitmap, _, _ := procSelectObject.Call(memDC, memBitmap)
 
 		// Access global state safely
@@ -338,7 +343,7 @@ func overlayWndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uin
 		}
 
 		// 1. Clear memory DC with background
-		rgn, _, _ := procCreateRoundRectRgn.Call(0, 0, 121, 47, 46, 46)
+		rgn, _, _ := procCreateRoundRectRgn.Call(0, 0, 120*overlayRenderScale+1, 46*overlayRenderScale+1, 46*overlayRenderScale, 46*overlayRenderScale)
 		if bgBrush != 0 {
 			procFillRgn.Call(memDC, rgn, uintptr(bgBrush))
 		}
@@ -380,11 +385,11 @@ func overlayWndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uin
 					h = 38
 				}
 
-				x := int32(startX + i*(barWidth+barGap))
-				y1 := int32(float64(centerY) - h/2)
-				y2 := int32(float64(centerY) + h/2)
+				x := int32((startX + i*(barWidth+barGap)) * overlayRenderScale)
+				y1 := int32((float64(centerY) - h/2) * overlayRenderScale)
+				y2 := int32((float64(centerY) + h/2) * overlayRenderScale)
 
-				barRgn, _, _ := procCreateRoundRectRgn.Call(uintptr(x), uintptr(y1), uintptr(x+int32(barWidth)), uintptr(y2), 4, 4)
+				barRgn, _, _ := procCreateRoundRectRgn.Call(uintptr(x), uintptr(y1), uintptr(x+int32(barWidth*overlayRenderScale)), uintptr(y2), 4*overlayRenderScale, 4*overlayRenderScale)
 				procFillRgn.Call(memDC, barRgn, barBrush)
 				procDeleteObject.Call(barRgn)
 			}
@@ -408,11 +413,11 @@ func overlayWndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uin
 				// Subtler oscillation
 				h := 10.0 + 10.0*math.Abs(math.Sin(t+float64(i)*0.3))
 
-				x := int32(startX + i*(barWidth+barGap))
-				y1 := int32(float64(centerY) - h/2)
-				y2 := int32(float64(centerY) + h/2)
+				x := int32((startX + i*(barWidth+barGap)) * overlayRenderScale)
+				y1 := int32((float64(centerY) - h/2) * overlayRenderScale)
+				y2 := int32((float64(centerY) + h/2) * overlayRenderScale)
 
-				barRgn, _, _ := procCreateRoundRectRgn.Call(uintptr(x), uintptr(y1), uintptr(x+int32(barWidth)), uintptr(y2), 4, 4)
+				barRgn, _, _ := procCreateRoundRectRgn.Call(uintptr(x), uintptr(y1), uintptr(x+int32(barWidth*overlayRenderScale)), uintptr(y2), 4*overlayRenderScale, 4*overlayRenderScale)
 				procFillRgn.Call(memDC, barRgn, barBrush)
 				procDeleteObject.Call(barRgn)
 			}
@@ -432,15 +437,20 @@ func overlayWndProc(hwnd syscall.Handle, msg uint32, wParam, lParam uintptr) uin
 			if hFont != 0 {
 				oldFont, _, _ := procSelectObject.Call(memDC, uintptr(hFont))
 				// Centered text across the whole pill since there's no circle anymore
-				textRect := rect{0, 0, 120, 46}
+				textRect := rect{0, 0, 120 * overlayRenderScale, 46 * overlayRenderScale}
 				textPtr := syscall.StringToUTF16Ptr(text)
 				procDrawTextW.Call(memDC, uintptr(unsafe.Pointer(textPtr)), ^uintptr(0), uintptr(unsafe.Pointer(&textRect)), DT_CENTER|DT_VCENTER|DT_SINGLELINE)
 				procSelectObject.Call(memDC, oldFont)
 			}
 		}
 
-		// 3. Copy everything from memory DC to screen (prevents flicker)
-		procBitBlt.Call(hdc, 0, 0, 120, 46, memDC, 0, 0, 0x00CC0020) // SRCCOPY
+		// 3. Downsample the existing content to the same on-screen dimensions.
+		previousMode, _, _ := procSetStretchBltMode.Call(hdc, 4) // HALFTONE
+		procSetBrushOrgEx.Call(hdc, 0, 0, 0)
+		procStretchBlt.Call(hdc, 0, 0, 120, 46, memDC, 0, 0, 120*overlayRenderScale, 46*overlayRenderScale, 0x00CC0020)
+		if previousMode != 0 {
+			procSetStretchBltMode.Call(hdc, previousMode)
+		}
 
 		// Cleanup memory DC
 		procSelectObject.Call(memDC, oldBitmap)
