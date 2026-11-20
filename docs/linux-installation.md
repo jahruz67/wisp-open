@@ -85,6 +85,8 @@ WIS listens to the shortcut saved in Settings. Its keyboard shortcut does not de
 
 Linux release packages include whisper.cpp v1.9.4 with Vulkan support, using the same engine and GGML model format as the Windows Vulkan version. No model is bundled or downloaded during app installation.
 
+Linux release builds target glibc 2.35 and newer, using a pinned Ubuntu 22.04 build environment. If **Install Offline Whisper** fails with `GLIBC_x.y not found`, the installed engine was built against a newer glibc than your system provides. Install a compatible WIS release package, or [build WIS from source](#build-from-source) on the affected machine. Retrying the model download will not fix an incompatible engine.
+
 In Settings, open **Offline Whisper**, choose a model size, and click **Install Offline Whisper**. The download runs inside Settings with progress and verifies the model's size and SHA-256 checksum. Then select **Local — [model] (offline)** in the Whisper Model dropdown. The engine and model run locally; no transcription API key is needed. Set **AI Refinement** to **None** to keep the entire dictation flow offline.
 
 GPU acceleration requires a compatible Vulkan graphics driver. For Intel/AMD, install your distribution's Mesa Vulkan drivers (`mesa-vulkan-drivers` on Debian/Ubuntu and Fedora; `vulkan-intel` or `vulkan-radeon` on Arch). For NVIDIA, use your distribution's supported NVIDIA driver with Vulkan support. A Vulkan loader alone does not supply a GPU driver. The packaged engine also includes the CPU backend for machines without a usable Vulkan GPU.

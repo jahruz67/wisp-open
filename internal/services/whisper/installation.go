@@ -38,7 +38,9 @@ func checkEngine(path string) error {
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		hint := "Check the engine's runtime libraries."
-		if runtime.GOOS == "windows" {
+		if runtime.GOOS == "linux" && strings.Contains(string(output), "GLIBC_") && strings.Contains(string(output), "not found") {
+			hint = "This Whisper engine requires a newer glibc than your Linux system provides. Install a WIS package compatible with your distribution, or build WIS from source on this system."
+		} else if runtime.GOOS == "windows" {
 			hint = "Check your graphics driver and Microsoft Visual C++ x64 runtime (https://aka.ms/vs/17/release/vc_redist.x64.exe)."
 		}
 		return fmt.Errorf("Whisper engine could not start: %w. %s %s", err, hint, strings.TrimSpace(string(output)))

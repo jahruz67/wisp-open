@@ -102,6 +102,7 @@ require_command pkg-config
 require_command gcc
 if [ "$BUILD_DEB" = true ]; then
     require_command dpkg-deb
+    require_command readelf
 fi
 if [ "$BUILD_RPM" = true ]; then
     require_command rpmbuild
@@ -293,6 +294,15 @@ rm -rf "$DEB_ROOT"
 mkdir -p "$DEB_ROOT/DEBIAN"
 cp -a "$WORK_DIR/root/." "$DEB_ROOT/"
 
+# Include the engine's requirement too, especially for packages built locally
+# on newer distributions. Reject incompatible systems at package installation.
+GLIBC_VERSION="$(readelf --version-info "$DEB_ROOT/usr/bin/$APP_NAME" "$DEB_ROOT/usr/lib/$APP_NAME/whisper-cli" \
+    | sed -n 's/.*Name: GLIBC_\([0-9][0-9.]*\).*/\1/p' | sort -V | tail -n1)"
+if [ -z "$GLIBC_VERSION" ]; then
+    echo "[ERROR] Could not determine the package's glibc requirement." >&2
+    exit 1
+fi
+
 INSTALLED_SIZE="$(du -sk "$DEB_ROOT/usr" | awk '{print $1}')"
 cat > "$DEB_ROOT/DEBIAN/control" <<EOF
 Package: $APP_NAME
@@ -302,7 +312,7 @@ Priority: optional
 Architecture: $ARCH_DEB
 Maintainer: $MAINTAINER
 Installed-Size: $INSTALLED_SIZE
-Depends: libgtk-3-0, $WEBKIT_DEB_DEP, libasound2, $APPINDICATOR_DEB_DEP, libvulkan1, ydotool, ydotoold | ydotool (>= 1.0.0)
+Depends: libc6 (>= $GLIBC_VERSION), libgtk-3-0, $WEBKIT_DEB_DEP, libasound2, $APPINDICATOR_DEB_DEP, libvulkan1, ydotool, ydotoold | ydotool (>= 1.0.0)
 Description: $COMMENT
  WIS Free V3 is a desktop voice dictation app built with Go and Wails.
  The package includes the integration needed to start ydotool for direct typing.

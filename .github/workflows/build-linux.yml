@@ -13,7 +13,9 @@ permissions:
 jobs:
   build-linux:
     name: Build Debian and Fedora packages
-    runs-on: ubuntu-latest
+    # Build against the oldest supported glibc; newer runners raise the minimum
+    # runtime version even when Whisper and the C++ runtime are linked statically.
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout
@@ -36,6 +38,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential \
+            binutils \
             git \
             cmake \
             libvulkan-dev \
@@ -75,6 +78,19 @@ jobs:
 
           desktop_root=$(mktemp -d)
           dpkg-deb --extract "$deb_package" "$desktop_root"
+
+          # Check both shipped executables so a toolchain update cannot silently
+          # introduce a newer glibc requirement into otherwise installable packages.
+          for binary in "$desktop_root/usr/bin/wis-free-v3" "$desktop_root/usr/lib/wis-free-v3/whisper-cli"; do
+            required_glibc=$(readelf --version-info "$binary" \
+              | sed -n 's/.*Name: GLIBC_\([0-9][0-9.]*\).*/\1/p' | sort -V | tail -n1)
+            if dpkg --compare-versions "${required_glibc:-0}" gt 2.35; then
+              echo "$binary requires glibc $required_glibc; the release baseline is 2.35." >&2
+              exit 1
+            fi
+          done
+          env -u LD_LIBRARY_PATH -u LD_PRELOAD "$desktop_root/usr/lib/wis-free-v3/whisper-cli" --help
+
           desktop-file-validate "$desktop_root/usr/share/applications/wis-free-v3.desktop"
           grep -q '^Actions=ToggleRecording;' "$desktop_root/usr/share/applications/wis-free-v3.desktop"
           grep -q '^Exec=.* --action=toggle$' "$desktop_root/usr/share/applications/wis-free-v3.desktop"
