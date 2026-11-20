@@ -149,15 +149,15 @@ if ! pkg-config --exists gtk+-3.0 || ! webkit2_ok || ! pkg-config --exists alsa 
     echo "[ERROR] Missing one or more native build dependencies."
     echo ""
     echo "Ubuntu/Debian:"
-    echo "  sudo apt update && sudo apt install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.0-dev libasound2-dev libayatana-appindicator3-dev dpkg-dev rpm"
+    echo "  sudo apt update && sudo apt install -y build-essential pkg-config git cmake libvulkan-dev glslc spirv-headers libgtk-3-dev libwebkit2gtk-4.0-dev libasound2-dev libayatana-appindicator3-dev dpkg-dev rpm"
     echo "  sudo apt install -y ydotool  (recommended for direct keyboard injection)"
     echo ""
     echo "Fedora:"
-    echo "  sudo dnf install -y gcc gcc-c++ make pkgconf-pkg-config gtk3-devel webkit2gtk4.1-devel alsa-lib-devel libayatana-appindicator-gtk3-devel rpm-build"
+    echo "  sudo dnf install -y gcc gcc-c++ make pkgconf-pkg-config git cmake vulkan-loader-devel vulkan-headers glslc spirv-headers-devel gtk3-devel webkit2gtk4.1-devel alsa-lib-devel libayatana-appindicator-gtk3-devel rpm-build"
     echo "  sudo dnf install -y ydotool  (recommended for direct keyboard injection)"
     echo ""
     echo "Arch Linux:"
-    echo "  sudo pacman -S base-devel pkgconf gtk3 webkit2gtk alsa-lib libayatana-appindicator"
+    echo "  sudo pacman -S base-devel pkgconf git cmake vulkan-headers vulkan-icd-loader shaderc spirv-headers gtk3 webkit2gtk alsa-lib libayatana-appindicator"
     echo "  sudo pacman -S ydotool  (recommended for direct keyboard injection)"
     echo ""
     exit 1
@@ -222,6 +222,8 @@ fi
 
 pkill -f "$EXECUTABLE" 2>/dev/null || true
 
+bash scripts/build-whisper-linux.sh
+
 echo "[3/5] Preparing package payload..."
 rm -rf "$WORK_DIR"
 mkdir -p "$WORK_DIR/root/usr/bin"
@@ -235,6 +237,8 @@ mkdir -p "$WORK_DIR/root/usr/lib/udev/rules.d"
 mkdir -p "$DIST_DIR"
 
 install -m 0755 "$EXECUTABLE" "$WORK_DIR/root/usr/bin/$APP_NAME"
+install -D -m 0755 "$BUILD_DIR/whisper-cli" "$WORK_DIR/root/usr/lib/$APP_NAME/whisper-cli"
+install -m 0644 "$BUILD_DIR/whisper-LICENSE" "$WORK_DIR/root/usr/share/doc/$APP_NAME/whisper-LICENSE"
 install -m 0644 "build/linux/$APP_NAME-ydotool.service" "$WORK_DIR/root/usr/lib/systemd/user/$APP_NAME-ydotool.service"
 install -m 0644 "build/linux/80-$APP_NAME-uinput.rules" "$WORK_DIR/root/usr/lib/udev/rules.d/80-$APP_NAME-uinput.rules"
 
@@ -298,7 +302,7 @@ Priority: optional
 Architecture: $ARCH_DEB
 Maintainer: $MAINTAINER
 Installed-Size: $INSTALLED_SIZE
-Depends: libgtk-3-0, $WEBKIT_DEB_DEP, libasound2, $APPINDICATOR_DEB_DEP, ydotool, ydotoold | ydotool (>= 1.0.0)
+Depends: libgtk-3-0, $WEBKIT_DEB_DEP, libasound2, $APPINDICATOR_DEB_DEP, libvulkan1, ydotool, ydotoold | ydotool (>= 1.0.0)
 Description: $COMMENT
  WIS Free V3 is a desktop voice dictation app built with Go and Wails.
  The package includes the integration needed to start ydotool for direct typing.
@@ -389,10 +393,13 @@ fi
 
 %files
 %attr(0755,root,root) /usr/bin/$APP_NAME
+%dir /usr/lib/$APP_NAME
+%attr(0755,root,root) /usr/lib/$APP_NAME/whisper-cli
 /usr/share/applications/$APP_NAME.desktop
 /usr/share/pixmaps/$APP_NAME.png
 /usr/share/metainfo/$APP_NAME.metainfo.xml
 /usr/share/doc/$APP_NAME/README.md
+/usr/share/doc/$APP_NAME/whisper-LICENSE
 /usr/share/doc/$APP_NAME/docs/linux-installation.md
 /usr/lib/systemd/user/$APP_NAME-ydotool.service
 /usr/lib/udev/rules.d/80-$APP_NAME-uinput.rules

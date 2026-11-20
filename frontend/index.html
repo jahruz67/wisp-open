@@ -842,7 +842,7 @@
 				if (result && result.startsWith('Error:')) {
 					throw new Error(result.substring(6).trim());
 				}
-				if (platformOS === 'darwin') {
+				if (platformOS === 'darwin' || platformOS === 'linux') {
 					btn.textContent = 'Downloading 0%';
 					showSaveStatus('Model download started');
 					return;
@@ -879,9 +879,6 @@
             try {
                 const isLinux = navigator.userAgent.toLowerCase().includes('linux');
                 if (isLinux) {
-                    const offlineSection = document.getElementById('offlineWhisperSection');
-                    if (offlineSection) offlineSection.style.display = 'none';
-
                     const startupLabel = document.getElementById('startupLabel');
                     if (startupLabel) startupLabel.innerText = 'Run on Startup';
                 }
@@ -945,16 +942,6 @@
             }
 
             window.addEventListener('focus', refreshMacStatus);
-
-            // If Linux, ensure Local Whisper option is removed
-            if (navigator.userAgent.toLowerCase().includes('linux')) {
-                const whisperSelect = document.getElementById('whisperModel');
-                if (whisperSelect) {
-                    Array.from(whisperSelect.options).forEach(opt => {
-                        if (opt.value.startsWith('local-')) opt.remove();
-                    });
-                }
-            }
         }
 
         initialize();

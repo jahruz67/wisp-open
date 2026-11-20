@@ -10,6 +10,8 @@ Download the Apple Silicon preview DMG, drag **WIS Free V3** to Applications, an
 
 Local Whisper models are never bundled or downloaded automatically. Select the desired model manually from Settings when you want offline transcription.
 
+Linux packages include the same whisper.cpp Vulkan backend used on Windows, enabling offline GPU inference with a compatible Intel, AMD, or NVIDIA Vulkan driver. Choose **Install Offline Whisper** in Settings, then select the installed local model. See [offline setup and GPU requirements](docs/linux-installation.md#offline-whisper-and-gpu-acceleration).
+
 ## Install on Linux
 
 Download the package for your distribution from the release page and install it with your normal package manager. The package manager installs the app and its direct-typing dependency together.

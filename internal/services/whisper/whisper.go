@@ -2,6 +2,7 @@
 package whisper
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -113,14 +114,14 @@ func (m *Manager) GetInstalledInfo() (*InstalledInfo, error) {
 }
 
 // Install downloads and installs Whisper with the specified model. Windows
-// opens its existing terminal installer; macOS reports progress through the
+// opens its existing terminal installer; Linux and macOS report progress through the
 // channel accepted by InstallWithProgress.
 func (m *Manager) Install(model string) error {
 	return m.InstallWithProgress(model, nil)
 }
 
-// InstallWithProgress installs a user-selected local model. macOS ships the
-// engine in the application bundle, so only the explicitly selected model is
+// InstallWithProgress installs a user-selected local model. Linux and macOS ship
+// the engine with the application, so only the explicitly selected model is
 // downloaded. No model download occurs during application installation.
 func (m *Manager) InstallWithProgress(model string, progress chan<- DownloadProgress) error {
 	if _, ok := Models[model]; !ok {
@@ -132,11 +133,8 @@ func (m *Manager) InstallWithProgress(model string, progress chan<- DownloadProg
 		return fmt.Errorf("failed to create install directory: %w", err)
 	}
 
-	if runtime.GOOS == "darwin" {
-		return m.installDarwinModel(model, progress)
-	}
-	if runtime.GOOS == "linux" {
-		return fmt.Errorf("automatic whisper installation is not available on linux; install whisper.cpp from your package manager")
+	if runtime.GOOS == "darwin" || runtime.GOOS == "linux" {
+		return m.installLocalModel(model, progress)
 	}
 
 	// Create install script (Windows batch file)
@@ -156,12 +154,14 @@ func (m *Manager) InstallWithProgress(model string, progress chan<- DownloadProg
 	return nil
 }
 
-func (m *Manager) installDarwinModel(model string, progress chan<- DownloadProgress) error {
-	if runtime.GOARCH != "arm64" {
+func (m *Manager) installLocalModel(model string, progress chan<- DownloadProgress) error {
+	if runtime.GOOS == "darwin" && runtime.GOARCH != "arm64" {
 		return fmt.Errorf("local Whisper is supported only on Apple Silicon")
 	}
-	if _, err := os.Stat(m.bundledDarwinBinary()); err != nil {
-		return fmt.Errorf("bundled Whisper engine is missing: %w", err)
+	if stat, err := os.Stat(m.getBinaryPath()); err != nil {
+		return fmt.Errorf("Whisper engine is missing; reinstall WIS with its offline engine: %w", err)
+	} else if !stat.Mode().IsRegular() || stat.Mode().Perm()&0111 == 0 {
+		return fmt.Errorf("Whisper engine is not executable: %s", m.getBinaryPath())
 	}
 
 	modelInfo := Models[model]
@@ -212,7 +212,11 @@ func (m *Manager) installDarwinModel(model string, progress chan<- DownloadProgr
 			_ = os.Remove(filepath.Join(m.installDir, oldInfo.Filename))
 		}
 	}
-	info := InstalledInfo{Version: "bundled-arm64", Model: model, InstallPath: m.installDir}
+	version := "bundled-arm64"
+	if runtime.GOOS == "linux" {
+		version = "linux-whisper.cpp"
+	}
+	info := InstalledInfo{Version: version, Model: model, InstallPath: m.installDir}
 	data, err := json.MarshalIndent(info, "", "    ")
 	if err != nil {
 		return err
@@ -395,12 +399,18 @@ func (m *Manager) Transcribe(audioPath string, language string) (string, error) 
 	// Hide the console window on Windows
 	hideWindowContext(cmd)
 
-	output, err := cmd.CombinedOutput()
+	// GPU/backend diagnostics go to stderr and must never become dictated text.
+	var diagnostics bytes.Buffer
+	cmd.Stderr = &diagnostics
+	output, err := cmd.Output()
 	outputStr := string(output)
 
 	if err != nil {
-		logger.Error("Whisper failed: %v, output: %s", err, outputStr)
-		return "", fmt.Errorf("transcription failed: %w", err)
+		logger.Error("Whisper failed: %v, output: %s, diagnostics: %s", err, outputStr, diagnostics.String())
+		return "", fmt.Errorf("transcription failed: %w: %s", err, strings.TrimSpace(diagnostics.String()))
+	}
+	if runtime.GOOS == "linux" {
+		logger.Debug("Whisper backend diagnostics: %s", strings.TrimSpace(diagnostics.String()))
 	}
 
 	// Parse the output - whisper.cpp outputs transcribed text to stdout
@@ -462,6 +472,9 @@ func (m *Manager) getBinaryPath() string {
 	if runtime.GOOS == "darwin" {
 		return m.bundledDarwinBinary()
 	}
+	if runtime.GOOS == "linux" {
+		return m.linuxBinaryPath()
+	}
 	// whisper.cpp extracts to a Release subdirectory
 	releaseDir := filepath.Join(m.installDir, "Release")
 
@@ -500,6 +513,32 @@ func (m *Manager) getBinaryPath() string {
 		return filepath.Join(releaseDir, "main.exe")
 	}
 	return filepath.Join(releaseDir, "main")
+}
+
+// linuxBinaryPath covers release packages, source installs, and development.
+func (m *Manager) linuxBinaryPath() string {
+	var candidates []string
+	if executable, err := os.Executable(); err == nil {
+		if resolved, err := filepath.EvalSymlinks(executable); err == nil {
+			executable = resolved
+		}
+		binDir := filepath.Dir(executable)
+		candidates = append(candidates,
+			filepath.Join(binDir, "..", "lib", "wis-free-v3", "whisper-cli"),
+			filepath.Join(binDir, "whisper-cli"))
+	}
+	candidates = append(candidates,
+		filepath.Join(m.installDir, "whisper-cli"),
+		filepath.Join(m.installDir, "Release", "whisper-cli"))
+	for _, candidate := range candidates {
+		if stat, err := os.Stat(candidate); err == nil && stat.Mode().IsRegular() && stat.Mode().Perm()&0111 != 0 {
+			return filepath.Clean(candidate)
+		}
+	}
+	if binary, err := exec.LookPath("whisper-cli"); err == nil {
+		return binary
+	}
+	return "/usr/lib/wis-free-v3/whisper-cli"
 }
 
 func (m *Manager) bundledDarwinBinary() string {

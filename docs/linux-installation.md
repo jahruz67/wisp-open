@@ -81,6 +81,20 @@ Use **Start with system** in WIS to start in the tray at login. You can also man
 
 WIS listens to the shortcut saved in Settings. Its keyboard shortcut does not depend on KDE shortcut configuration.
 
+## Offline Whisper and GPU acceleration
+
+Linux release packages include whisper.cpp v1.9.4 with Vulkan support, using the same engine and GGML model format as the Windows Vulkan version. No model is bundled or downloaded during app installation.
+
+In Settings, open **Offline Whisper**, choose a model size, and click **Install Offline Whisper**. The download runs inside Settings with progress and verifies the model's size and SHA-256 checksum. Then select **Local — [model] (offline)** in the Whisper Model dropdown. The engine and model run locally; no transcription API key is needed. Set **AI Refinement** to **None** to keep the entire dictation flow offline.
+
+GPU acceleration requires a compatible Vulkan graphics driver. For Intel/AMD, install your distribution's Mesa Vulkan drivers (`mesa-vulkan-drivers` on Debian/Ubuntu and Fedora; `vulkan-intel` or `vulkan-radeon` on Arch). For NVIDIA, use your distribution's supported NVIDIA driver with Vulkan support. A Vulkan loader alone does not supply a GPU driver. The packaged engine also includes the CPU backend for machines without a usable Vulkan GPU.
+
+If GPU acceleration is unavailable, inspect `vulkaninfo --summary` (from `vulkan-tools`) and the WIS logs under `~/.wis-free-v3/logs/`. Whisper backend diagnostics in the log show which device was detected; installation success alone does not confirm GPU inference. Report the GPU model, driver, and diagnostic output when troubleshooting.
+
+Release packages install the engine in `/usr/lib/wis-free-v3/whisper-cli`. Source installs use `/usr/local/lib/wis-free-v3/whisper-cli` or `~/.local/lib/wis-free-v3/whisper-cli`. A manually installed `whisper-cli` on `PATH` is also accepted when the bundled engine is absent; its GPU support depends on how it was built. Models remain in `~/.wis-free-v3/whisper/`.
+
+Upstream reference: [whisper.cpp Vulkan GPU support](https://github.com/ggml-org/whisper.cpp/blob/v1.9.4/README.md#vulkan-gpu-support).
+
 ## Troubleshooting
 
 ### Direct typing is not ready
@@ -133,7 +147,7 @@ Install Go 1.24+, Node.js 20+, and native dependencies.
 
 ```bash
 sudo apt update
-sudo apt install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev libasound2-dev libayatana-appindicator3-dev ydotool
+sudo apt install -y build-essential pkg-config git cmake libvulkan-dev glslc spirv-headers libgtk-3-dev libwebkit2gtk-4.1-dev libasound2-dev libayatana-appindicator3-dev ydotool
 ```
 
 On Debian/Ubuntu releases where `ydotoold` is a separate package, also run `sudo apt install ydotoold`. If `libwebkit2gtk-4.1-dev` is unavailable, use `libwebkit2gtk-4.0-dev`.
@@ -141,13 +155,13 @@ On Debian/Ubuntu releases where `ydotoold` is a separate package, also run `sudo
 ### Fedora
 
 ```bash
-sudo dnf install -y gcc gcc-c++ make pkgconf-pkg-config gtk3-devel webkit2gtk4.1-devel alsa-lib-devel libayatana-appindicator-gtk3-devel ydotool
+sudo dnf install -y gcc gcc-c++ make pkgconf-pkg-config git cmake vulkan-loader-devel vulkan-headers glslc spirv-headers-devel gtk3-devel webkit2gtk4.1-devel alsa-lib-devel libayatana-appindicator-gtk3-devel ydotool
 ```
 
 ### Arch Linux and Manjaro
 
 ```bash
-sudo pacman -S base-devel pkgconf gtk3 webkit2gtk alsa-lib libayatana-appindicator ydotool
+sudo pacman -S base-devel pkgconf git cmake vulkan-headers vulkan-icd-loader shaderc spirv-headers gtk3 webkit2gtk alsa-lib libayatana-appindicator ydotool
 ```
 
 Then build and install:
@@ -157,6 +171,8 @@ go install github.com/wailsapp/wails/v2/cmd/wails@latest
 bash scripts/build-linux.sh --install-user
 bash scripts/build-linux.sh --install-systemd
 ```
+
+The build script fetches the pinned whisper.cpp source and builds a Vulkan-enabled engine alongside the app. The source, build tools, and shader compiler are needed only when building; release-package users need only their Vulkan runtime and graphics driver. No model is downloaded by the build scripts.
 
 The service setup prefers a distribution-provided user unit. If none exists, it creates a WIS-specific user unit without overwriting distribution files.
 

@@ -294,7 +294,7 @@ if [ "$XDG_CURRENT_DESKTOP" = "GNOME" ] || [ "$XDG_CURRENT_DESKTOP" = "ubuntu:GN
     fi
 fi
 
-DEPS=("gcc" "pkg-config")
+DEPS=("gcc" "pkg-config" "git" "cmake" "c++" "glslc")
 
 for dep in "${DEPS[@]}"; do
     if ! command_exists $dep; then
@@ -362,17 +362,17 @@ if [ $MISSING_DEPS -eq 1 ]; then
     echo "with the command shown in the app Settings window."
     echo ""
     
-    DEBIAN_DEPS="build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev libasound2-dev libayatana-appindicator3-dev"
-    DEBIAN_DEPS_ALT="build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.0-dev libasound2-dev libayatana-appindicator3-dev"
+    DEBIAN_DEPS="build-essential pkg-config git cmake libvulkan-dev glslc spirv-headers libgtk-3-dev libwebkit2gtk-4.1-dev libasound2-dev libayatana-appindicator3-dev"
+    DEBIAN_DEPS_ALT="build-essential pkg-config git cmake libvulkan-dev glslc spirv-headers libgtk-3-dev libwebkit2gtk-4.0-dev libasound2-dev libayatana-appindicator3-dev"
     # Runtime nicety (optional): playerctl pauses media while recording
     DEBIAN_RUNTIME_OPT="playerctl ydotool"
     # Fedora 40+: WebKit2GTK 4.0 packages are gone; use 4.1 + Wails -tags webkit2_41 (see wails build below).
     # pkgconf-pkg-config provides `pkg-config` on Fedora.
-    FEDORA_DEPS="gcc gcc-c++ make pkgconf-pkg-config gtk3-devel webkit2gtk4.1-devel alsa-lib-devel libayatana-appindicator-gtk3-devel"
+    FEDORA_DEPS="gcc gcc-c++ make pkgconf-pkg-config git cmake vulkan-loader-devel vulkan-headers glslc spirv-headers-devel gtk3-devel webkit2gtk4.1-devel alsa-lib-devel libayatana-appindicator-gtk3-devel"
     # Same as FEDORA_DEPS but classic libappindicator (some spins/repos lack Ayatana -devel)
-    FEDORA_DEPS_ALT="gcc gcc-c++ make pkgconf-pkg-config gtk3-devel webkit2gtk4.1-devel alsa-lib-devel libappindicator-gtk3-devel"
+    FEDORA_DEPS_ALT="gcc gcc-c++ make pkgconf-pkg-config git cmake vulkan-loader-devel vulkan-headers glslc spirv-headers-devel gtk3-devel webkit2gtk4.1-devel alsa-lib-devel libappindicator-gtk3-devel"
     FEDORA_RUNTIME_OPT="playerctl ydotool"
-    ARCH_DEPS="base-devel pkgconf gtk3 webkit2gtk alsa-lib libayatana-appindicator"
+    ARCH_DEPS="base-devel pkgconf git cmake vulkan-headers vulkan-icd-loader shaderc spirv-headers gtk3 webkit2gtk alsa-lib libayatana-appindicator"
     ARCH_RUNTIME_OPT="playerctl ydotool"
     
     echo "The full list of dependencies needed:"
@@ -468,6 +468,8 @@ fi
 # doesn't block the terminal while we ask about installation.
 pkill -f "$EXECUTABLE" 2>/dev/null || true
 
+bash scripts/build-whisper-linux.sh
+
 echo "[3/4] Build successful!"
 echo "      Output: $EXECUTABLE"
 echo ""
@@ -514,6 +516,8 @@ if [ "$INSTALL_MODE" = "system" ]; then
     # Needs sudo
     sudo cp "$EXECUTABLE" "/usr/local/bin/$APP_NAME"
     sudo chmod +x "/usr/local/bin/$APP_NAME"
+    sudo install -D -m 0755 "$BUILD_DIR/whisper-cli" "/usr/local/lib/$APP_NAME/whisper-cli"
+    sudo install -D -m 0644 "$BUILD_DIR/whisper-LICENSE" "/usr/local/share/doc/$APP_NAME/whisper-LICENSE"
 
     # Create Desktop shortcut
     DESKTOP_FILE="/usr/share/applications/$APP_NAME.desktop"
@@ -545,6 +549,8 @@ elif [ "$INSTALL_MODE" = "user" ]; then
 
     cp "$EXECUTABLE" "$LOCAL_BIN_DIR/$APP_NAME"
     chmod +x "$LOCAL_BIN_DIR/$APP_NAME"
+    install -D -m 0755 "$BUILD_DIR/whisper-cli" "$HOME/.local/lib/$APP_NAME/whisper-cli"
+    install -D -m 0644 "$BUILD_DIR/whisper-LICENSE" "$HOME/.local/share/doc/$APP_NAME/whisper-LICENSE"
 
     # Add to PATH warning
     case ":${PATH}:" in

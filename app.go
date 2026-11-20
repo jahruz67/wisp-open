@@ -866,7 +866,7 @@ func (a *App) InstallWhisper(model string) string {
 		return fmt.Sprintf("Error: %v", err)
 	}
 
-	if runtime.GOOS == "darwin" {
+	if runtime.GOOS == "darwin" || runtime.GOOS == "linux" {
 		if !atomic.CompareAndSwapInt32(&a.whisperInstalling, 0, 1) {
 			return "Error: another local model download is already in progress"
 		}
