@@ -353,9 +353,9 @@
             const btn = document.getElementById('recordBtn');
             const input = document.getElementById('shortcutInput');
 
-            // WebView2 on Windows often omits metaKey on key events; e.code still identifies Meta.
-            const winKeyActive = (e) =>
-                e.metaKey ||
+            // WebView2 may omit metaKey on later events, so track Windows keys explicitly.
+            const heldSuperKeys = new Set();
+            const isSuperKey = (e) =>
                 e.key === 'Meta' ||
                 e.key === 'OS' ||
                 e.code === 'MetaLeft' ||
@@ -371,11 +371,13 @@
                 e.preventDefault();
                 e.stopPropagation();
 
+                if (isSuperKey(e)) heldSuperKeys.add(e.code || e.key);
+
                 const mods = [];
                 if (e.ctrlKey) mods.push('ctrl');
                 if (e.altKey) mods.push('alt');
                 if (e.shiftKey) mods.push('shift');
-                if (winKeyActive(e)) mods.push('super');
+                if (e.metaKey || heldSuperKeys.size > 0) mods.push('super');
 
                 let key = e.key.toLowerCase();
                 if (key.startsWith('arrow')) key = key.substring(5);
@@ -405,23 +407,20 @@
             const keyupHandler = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                // Finalize when keys are released if we have a valid shortcut
-                if (lastShortcut) {
-                    // Check if it's a modifier-only shortcut that we should finalize
-                    const isModifierOnly = lastShortcut.split('+').every(p => ['ctrl', 'alt', 'shift', 'super'].includes(p));
-                    if (isModifierOnly && lastShortcut.includes('+')) {
-                        if (!e.ctrlKey && !e.altKey && !e.shiftKey && !winKeyActive(e)) finish();
-                    } else if (!e.ctrlKey && !e.altKey && !e.shiftKey && !winKeyActive(e)) {
-                        finish();
-                    }
+                if (isSuperKey(e)) heldSuperKeys.delete(e.code || e.key);
+                const superHeld = heldSuperKeys.size > 0 || (!isSuperKey(e) && e.metaKey);
+                // A Windows-key keyup identifies the released key, not a held modifier.
+                if (lastShortcut && !e.ctrlKey && !e.altKey && !e.shiftKey && !superHeld) {
+                    finish();
                 }
             };
 
             const finish = () => {
+                // Stop capture before saving so further key events cannot save twice.
+                cleanup();
                 if (!lastShortcut) {
                     btn.textContent = 'Record';
                     btn.disabled = false;
-                    cleanup();
                     return;
                 }
 
@@ -429,9 +428,11 @@
                     if (result && result.indexOf('Invalid shortcut') !== -1) {
                         alert(result);
                     }
+                }).catch((err) => {
+                    showSaveStatus('Could not save shortcut: ' + err);
+                }).finally(() => {
                     btn.textContent = 'Record';
                     btn.disabled = false;
-                    cleanup();
                 });
             };
 
