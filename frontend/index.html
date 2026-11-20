@@ -268,7 +268,7 @@
                             <select id="whisperModelSelect" class="form-control" disabled></select>
                             <p id="localModelDescription" class="hint" style="margin-top: 8px;">Loading available models…</p>
                         </div>
-                        <button onclick="installWhisper()" id="installBtn" disabled>
+                        <button onclick="installWhisper()" id="installBtn" style="display: none;" disabled>
                             Install Selected Model
                         </button>
                     </div>
@@ -881,6 +881,7 @@
                     whisperSelect.value = selectedModel;
                 }
                 const btn = document.getElementById('installBtn');
+                btn.style.display = info.installed ? 'none' : '';
                 const label = btn.disabled ? btn.textContent : 'Installing…';
                 renderWhisperInstallState(!!info.installing, label);
                 document.getElementById('whisperInstallStatus').textContent = info.installing
