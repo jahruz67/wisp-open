@@ -24,7 +24,7 @@ elif [[ ! -x "$ENGINE_SOURCE" ]]; then
     exit 1
 fi
 
-if ! lipo -verify_arch arm64 "$ENGINE_SOURCE"; then
+if ! lipo "$ENGINE_SOURCE" -verify_arch arm64; then
     echo "Whisper engine must contain an arm64 executable." >&2
     exit 1
 fi
