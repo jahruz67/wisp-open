@@ -87,7 +87,7 @@ WIS listens to the shortcut saved in Settings. Its keyboard shortcut does not de
 
 Linux release packages include whisper.cpp v1.9.4 with Vulkan support, using the same engine and GGML model format as the Windows Vulkan version. No model is bundled or downloaded during app installation.
 
-Linux release builds target glibc 2.35 and newer, using a pinned Ubuntu 22.04 build environment. If **Install Offline Whisper** fails with `GLIBC_x.y not found`, the installed engine was built against a newer glibc than your system provides. Install a compatible WIS release package, or [build WIS from source](#build-from-source) on the affected machine. Retrying the model download will not fix an incompatible engine.
+Linux release builds target glibc 2.35 and newer. They download the prebuilt engine from a pinned GitHub commit and verify its SHA-256 checksum before packaging it. If **Install Offline Whisper** fails with `GLIBC_x.y not found`, the installed engine was built against a newer glibc than your system provides. Install a compatible WIS release package or a compatible manually built engine. Retrying the model download or rebuilding only the app will not fix an incompatible engine.
 
 In Settings, open **Offline Whisper**, choose a model size, and click **Install Offline Whisper**. The download runs inside Settings with progress and verifies the model's size and SHA-256 checksum. Then select **Local — [model] (offline)** in the Whisper Model dropdown. The engine and model run locally; no transcription API key is needed. Set **AI Refinement** to **None** to keep the entire dictation flow offline.
 
@@ -151,7 +151,7 @@ Install Go 1.24+, Node.js 20+, and native dependencies.
 
 ```bash
 sudo apt update
-sudo apt install -y build-essential pkg-config git cmake libvulkan-dev glslc spirv-headers libgtk-3-dev libwebkit2gtk-4.1-dev libasound2-dev libayatana-appindicator3-dev pulseaudio-utils ydotool
+sudo apt install -y build-essential pkg-config git curl unzip libvulkan1 libgtk-3-dev libgtk-layer-shell-dev libx11-dev libxext-dev libxrandr-dev xwayland libwebkit2gtk-4.1-dev libasound2-dev libayatana-appindicator3-dev pulseaudio-utils ydotool
 ```
 
 On Debian/Ubuntu releases where `ydotoold` is a separate package, also run `sudo apt install ydotoold`. If `libwebkit2gtk-4.1-dev` is unavailable, use `libwebkit2gtk-4.0-dev`.
@@ -159,13 +159,13 @@ On Debian/Ubuntu releases where `ydotoold` is a separate package, also run `sudo
 ### Fedora
 
 ```bash
-sudo dnf install -y gcc gcc-c++ make pkgconf-pkg-config git cmake vulkan-loader-devel vulkan-headers glslc spirv-headers-devel gtk3-devel webkit2gtk4.1-devel alsa-lib-devel libayatana-appindicator-gtk3-devel pulseaudio-utils ydotool
+sudo dnf install -y gcc gcc-c++ make pkgconf-pkg-config git curl unzip vulkan-loader gtk3-devel gtk-layer-shell-devel libX11-devel libXext-devel libXrandr-devel xorg-x11-server-Xwayland webkit2gtk4.1-devel alsa-lib-devel libayatana-appindicator-gtk3-devel pulseaudio-utils ydotool
 ```
 
 ### Arch Linux and Manjaro
 
 ```bash
-sudo pacman -S base-devel pkgconf git cmake vulkan-headers vulkan-icd-loader shaderc spirv-headers gtk3 webkit2gtk alsa-lib libayatana-appindicator libpulse ydotool
+sudo pacman -S base-devel pkgconf git curl unzip vulkan-icd-loader gtk3 gtk-layer-shell libx11 libxext libxrandr xorg-xwayland webkit2gtk alsa-lib libayatana-appindicator libpulse ydotool
 ```
 
 Then build and install:
@@ -176,7 +176,7 @@ bash scripts/build-linux.sh --install-user
 bash scripts/build-linux.sh --install-systemd
 ```
 
-The build script fetches the pinned whisper.cpp source and builds a Vulkan-enabled engine alongside the app. The source, build tools, and shader compiler are needed only when building; release-package users need only their Vulkan runtime and graphics driver. No model is downloaded by the build scripts.
+Both package and source builds run `scripts/download-whisper-linux.sh` to download the prebuilt CPU/Vulkan engine and license from the pinned GitHub archive. They verify the archive's SHA-256 checksum and install the same engine without recompiling Whisper or its shader compiler. CMake, glslc, and Vulkan development headers are no longer required for normal Linux app builds. No model is downloaded by the build scripts.
 
 The service setup prefers a distribution-provided user unit. If none exists, it creates a WIS-specific user unit without overwriting distribution files.
 

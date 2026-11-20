@@ -100,6 +100,9 @@ run_with_retry() {
 require_command go
 require_command pkg-config
 require_command gcc
+require_command curl
+require_command unzip
+require_command sha256sum
 if [ "$BUILD_DEB" = true ]; then
     require_command dpkg-deb
     require_command readelf
@@ -150,15 +153,15 @@ if ! pkg-config --exists gtk+-3.0 gtk-layer-shell-0 x11 xext xrandr cairo-xlib |
     echo "[ERROR] Missing one or more native build dependencies."
     echo ""
     echo "Ubuntu/Debian:"
-    echo "  sudo apt update && sudo apt install -y build-essential pkg-config git cmake libvulkan-dev glslc spirv-headers libgtk-3-dev libgtk-layer-shell-dev libx11-dev libxext-dev libxrandr-dev xwayland libwebkit2gtk-4.0-dev libasound2-dev libayatana-appindicator3-dev pulseaudio-utils dpkg-dev rpm"
+    echo "  sudo apt update && sudo apt install -y build-essential pkg-config git curl unzip libvulkan1 libgtk-3-dev libgtk-layer-shell-dev libx11-dev libxext-dev libxrandr-dev xwayland libwebkit2gtk-4.0-dev libasound2-dev libayatana-appindicator3-dev pulseaudio-utils dpkg-dev rpm"
     echo "  sudo apt install -y ydotool  (recommended for direct keyboard injection)"
     echo ""
     echo "Fedora:"
-    echo "  sudo dnf install -y gcc gcc-c++ make pkgconf-pkg-config git cmake vulkan-loader-devel vulkan-headers glslc spirv-headers-devel gtk3-devel gtk-layer-shell-devel libX11-devel libXext-devel libXrandr-devel xorg-x11-server-Xwayland webkit2gtk4.1-devel alsa-lib-devel libayatana-appindicator-gtk3-devel pulseaudio-utils rpm-build"
+    echo "  sudo dnf install -y gcc gcc-c++ make pkgconf-pkg-config git curl unzip vulkan-loader gtk3-devel gtk-layer-shell-devel libX11-devel libXext-devel libXrandr-devel xorg-x11-server-Xwayland webkit2gtk4.1-devel alsa-lib-devel libayatana-appindicator-gtk3-devel pulseaudio-utils rpm-build"
     echo "  sudo dnf install -y ydotool  (recommended for direct keyboard injection)"
     echo ""
     echo "Arch Linux:"
-    echo "  sudo pacman -S base-devel pkgconf git cmake vulkan-headers vulkan-icd-loader shaderc spirv-headers gtk3 gtk-layer-shell libx11 libxext libxrandr xorg-xwayland webkit2gtk alsa-lib libayatana-appindicator libpulse"
+    echo "  sudo pacman -S base-devel pkgconf git curl unzip vulkan-icd-loader gtk3 gtk-layer-shell libx11 libxext libxrandr xorg-xwayland webkit2gtk alsa-lib libayatana-appindicator libpulse"
     echo "  sudo pacman -S ydotool  (recommended for direct keyboard injection)"
     echo ""
     exit 1
@@ -223,7 +226,7 @@ fi
 
 pkill -f "$EXECUTABLE" 2>/dev/null || true
 
-bash scripts/build-whisper-linux.sh
+bash scripts/download-whisper-linux.sh
 
 echo "[3/5] Preparing package payload..."
 rm -rf "$WORK_DIR"

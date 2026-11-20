@@ -40,10 +40,9 @@ jobs:
             build-essential \
             binutils \
             git \
-            cmake \
-            libvulkan-dev \
-            spirv-headers \
-            python3 \
+            curl \
+            unzip \
+            libvulkan1 \
             pkg-config \
             libgtk-3-dev \
             libgtk-layer-shell-dev \
@@ -60,26 +59,6 @@ jobs:
             xvfb \
             dpkg-dev \
             rpm
-
-      - name: Set up Vulkan headers
-        # Whisper needs newer Vulkan C/C++ declarations than Jammy provides.
-        # Keep its system loader; header-only updates do not raise the glibc baseline.
-        run: |
-          git clone --depth 1 --branch v1.3.296 https://github.com/KhronosGroup/Vulkan-Headers.git build/vulkan-headers
-          echo "VULKAN_SDK=$GITHUB_WORKSPACE/build/vulkan-headers" >> "$GITHUB_ENV"
-
-      - name: Build shader compiler for Ubuntu 22.04
-        # Jammy does not package glslc. Build it here to preserve the glibc baseline.
-        run: |
-          git clone --depth 1 --branch v2024.4 https://github.com/google/shaderc.git build/shaderc-src
-          cd build/shaderc-src
-          python3 utils/git-sync-deps
-          cmake -S . -B out \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DSHADERC_SKIP_TESTS=ON \
-            -DSHADERC_SKIP_EXAMPLES=ON
-          cmake --build out --target glslc_exe --parallel 2
-          echo "$PWD/out/glslc" >> "$GITHUB_PATH"
 
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0

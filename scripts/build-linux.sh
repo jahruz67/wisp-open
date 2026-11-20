@@ -294,7 +294,7 @@ if [ "$XDG_CURRENT_DESKTOP" = "GNOME" ] || [ "$XDG_CURRENT_DESKTOP" = "ubuntu:GN
     fi
 fi
 
-DEPS=("gcc" "pkg-config" "git" "cmake" "c++" "glslc")
+DEPS=("gcc" "pkg-config" "git" "c++" "curl" "unzip" "sha256sum")
 
 for dep in "${DEPS[@]}"; do
     if ! command_exists $dep; then
@@ -370,17 +370,17 @@ if [ $MISSING_DEPS -eq 1 ]; then
     echo "with the command shown in the app Settings window."
     echo ""
     
-    DEBIAN_DEPS="build-essential pkg-config git cmake libvulkan-dev glslc spirv-headers libgtk-3-dev libgtk-layer-shell-dev libx11-dev libxext-dev libxrandr-dev xwayland libwebkit2gtk-4.1-dev libasound2-dev libayatana-appindicator3-dev pulseaudio-utils"
-    DEBIAN_DEPS_ALT="build-essential pkg-config git cmake libvulkan-dev glslc spirv-headers libgtk-3-dev libgtk-layer-shell-dev libx11-dev libxext-dev libxrandr-dev xwayland libwebkit2gtk-4.0-dev libasound2-dev libayatana-appindicator3-dev pulseaudio-utils"
+    DEBIAN_DEPS="build-essential pkg-config git curl unzip libvulkan1 libgtk-3-dev libgtk-layer-shell-dev libx11-dev libxext-dev libxrandr-dev xwayland libwebkit2gtk-4.1-dev libasound2-dev libayatana-appindicator3-dev pulseaudio-utils"
+    DEBIAN_DEPS_ALT="build-essential pkg-config git curl unzip libvulkan1 libgtk-3-dev libgtk-layer-shell-dev libx11-dev libxext-dev libxrandr-dev xwayland libwebkit2gtk-4.0-dev libasound2-dev libayatana-appindicator3-dev pulseaudio-utils"
     # Runtime nicety (optional): playerctl pauses media while recording
     DEBIAN_RUNTIME_OPT="playerctl ydotool"
     # Fedora 40+: WebKit2GTK 4.0 packages are gone; use 4.1 + Wails -tags webkit2_41 (see wails build below).
     # pkgconf-pkg-config provides `pkg-config` on Fedora.
-    FEDORA_DEPS="gcc gcc-c++ make pkgconf-pkg-config git cmake vulkan-loader-devel vulkan-headers glslc spirv-headers-devel gtk3-devel gtk-layer-shell-devel libX11-devel libXext-devel libXrandr-devel xorg-x11-server-Xwayland webkit2gtk4.1-devel alsa-lib-devel libayatana-appindicator-gtk3-devel pulseaudio-utils"
+    FEDORA_DEPS="gcc gcc-c++ make pkgconf-pkg-config git curl unzip vulkan-loader gtk3-devel gtk-layer-shell-devel libX11-devel libXext-devel libXrandr-devel xorg-x11-server-Xwayland webkit2gtk4.1-devel alsa-lib-devel libayatana-appindicator-gtk3-devel pulseaudio-utils"
     # Same as FEDORA_DEPS but classic libappindicator (some spins/repos lack Ayatana -devel)
-    FEDORA_DEPS_ALT="gcc gcc-c++ make pkgconf-pkg-config git cmake vulkan-loader-devel vulkan-headers glslc spirv-headers-devel gtk3-devel gtk-layer-shell-devel libX11-devel libXext-devel libXrandr-devel xorg-x11-server-Xwayland webkit2gtk4.1-devel alsa-lib-devel libappindicator-gtk3-devel pulseaudio-utils"
+    FEDORA_DEPS_ALT="gcc gcc-c++ make pkgconf-pkg-config git curl unzip vulkan-loader gtk3-devel gtk-layer-shell-devel libX11-devel libXext-devel libXrandr-devel xorg-x11-server-Xwayland webkit2gtk4.1-devel alsa-lib-devel libappindicator-gtk3-devel pulseaudio-utils"
     FEDORA_RUNTIME_OPT="playerctl ydotool"
-    ARCH_DEPS="base-devel pkgconf git cmake vulkan-headers vulkan-icd-loader shaderc spirv-headers gtk3 gtk-layer-shell libx11 libxext libxrandr xorg-xwayland webkit2gtk alsa-lib libayatana-appindicator libpulse"
+    ARCH_DEPS="base-devel pkgconf git curl unzip vulkan-icd-loader gtk3 gtk-layer-shell libx11 libxext libxrandr xorg-xwayland webkit2gtk alsa-lib libayatana-appindicator libpulse"
     ARCH_RUNTIME_OPT="playerctl ydotool"
     
     echo "The full list of dependencies needed:"
@@ -476,7 +476,7 @@ fi
 # doesn't block the terminal while we ask about installation.
 pkill -f "$EXECUTABLE" 2>/dev/null || true
 
-bash scripts/build-whisper-linux.sh
+bash scripts/download-whisper-linux.sh
 
 echo "[3/4] Build successful!"
 echo "      Output: $EXECUTABLE"
