@@ -1,9 +1,6 @@
 package tray
 
-import (
-	"strings"
-	"sync"
-)
+import "sync"
 
 var statusMu sync.Mutex
 var lastStatus = "Ready"
@@ -18,9 +15,4 @@ func CurrentStatus() string {
 	statusMu.Lock()
 	defer statusMu.Unlock()
 	return lastStatus
-}
-
-// Every phase after key release stays yellow until text insertion completes.
-func isProcessingStatus(status string) bool {
-	return strings.Contains(status, "Processing") || strings.Contains(status, "Transcribing") || strings.Contains(status, "Typing")
 }

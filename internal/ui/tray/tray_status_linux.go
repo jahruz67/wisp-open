@@ -21,12 +21,12 @@ func LinuxHostStatus() HostStatus {
 			"org.freedesktop.DBus.Properties.Get", 0, "org.kde.StatusNotifierWatcher", "IsStatusNotifierHostRegistered").Store(&property)
 		var host bool
 		if err == nil && property.Store(&host) == nil && host {
-			return HostStatus{Ready: true, Message: "Tray support is available. The microphone stays active while WIS is running: white when idle, red while recording, and yellow while processing."}
+			return HostStatus{Ready: true, Message: "Tray support is available. The WIS icon stays in the panel while the app is running. A floating overlay shows recording and transcription activity."}
 		}
 	}
 	desktop := strings.ToUpper(os.Getenv("XDG_CURRENT_DESKTOP"))
 	if strings.Contains(desktop, "GNOME") {
-		return HostStatus{Message: "Enable AppIndicator and KStatusNotifierItem Support in GNOME Extensions to keep the microphone in the panel. Install gnome-shell-extension-appindicator if needed, then click Check again."}
+		return HostStatus{Message: "Enable AppIndicator and KStatusNotifierItem Support in GNOME Extensions to keep the WIS icon in the panel. Install gnome-shell-extension-appindicator if needed, then click Check again."}
 	}
 	if strings.Contains(desktop, "KDE") {
 		return HostStatus{Message: "Add or enable Plasma's System Tray widget, then set WIS Free V3 to Always shown under System Tray Settings → Entries. Click Check again after changing it."}

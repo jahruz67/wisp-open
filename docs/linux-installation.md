@@ -12,6 +12,8 @@ sudo apt install ./wis-free-v3_<version>-1_amd64.deb
 
 Use the leading `./`; without it, APT searches configured repositories instead of installing the downloaded file. The WIS package requires `ydotool` and, on releases that split it out, `ydotoold`.
 
+Release packages also require `pactl` for muting audio during recording and restoring it afterwards. APT installs its `pulseaudio-utils` package automatically; RPM package managers resolve the required `/usr/bin/pactl` provider automatically.
+
 If an earlier `dpkg -i` left the installation incomplete:
 
 ```bash
@@ -57,9 +59,9 @@ If a package or daemon is missing, the app shows only the command appropriate fo
 
 WIS defaults to **Ctrl+Super**. Use the **Record** button in WIS Settings to choose another shortcut. The app listens to Linux keyboard state directly, so shortcut setup is the same in KDE, GNOME, and other desktop environments. Keypresses are not consumed; choose a combination that does not conflict with another action.
 
-- Hold the shortcut: the microphone turns **red** and records.
-- Release it: the microphone turns **yellow** while the clip is finalized, transcribed, refined, and typed into the focused app.
-- When insertion finishes: the microphone returns to **white**. Wait for white before starting another recording.
+- Hold the shortcut: a floating pill shows live audio waves while recording.
+- Release it: the overlay pulses **gold** during transcription while WIS prepares the text for insertion.
+- When insertion finishes: the overlay disappears. Wait for it to disappear before starting another recording.
 
 Enable **Run on System Startup** to launch in the tray at login. Login itself never starts a recording. If WIS reports that it cannot read `/dev/input/event*`, grant your account access to the `input` group and sign out and back in:
 
@@ -69,7 +71,7 @@ sudo usermod -aG input "$USER"
 
 Membership in `input` grants programs running as your user read/write access to Linux input devices, including keyboards. Only make this change if you want to grant that access.
 
-The **white microphone stays registered in the system tray whenever WIS is running**, including immediately after a background login launch and while Settings is closed. WIS changes its color rather than removing the icon while idle. In Plasma, set WIS to **Always shown** under **System Tray Settings → Entries** if your panel hides it. In GNOME, enable **AppIndicator and KStatusNotifierItem Support** in Extensions. WIS Settings checks whether a tray host is available and shows the relevant setup hint if one is missing.
+The **WIS app icon stays registered in the system tray whenever WIS is running**, including immediately after a background login launch and while Settings is closed. It uses the same artwork as Windows and stays unchanged during recording and transcription. The floating overlay shows activity without taking keyboard focus or intercepting clicks. WIS uses a native Wayland overlay layer on supported compositors and a separately positioned X11/XWayland overlay on other desktops, including GNOME. Linux packages install both overlay dependencies automatically. The settings window keeps its normal display backend. In Plasma, set WIS to **Always shown** under **System Tray Settings → Entries** if your panel hides it. In GNOME, enable **AppIndicator and KStatusNotifierItem Support** in Extensions. WIS Settings checks whether a tray host is available and shows the relevant setup hint if one is missing.
 
 GNOME may require the AppIndicator extension described below to display the tray icon.
 
@@ -149,7 +151,7 @@ Install Go 1.24+, Node.js 20+, and native dependencies.
 
 ```bash
 sudo apt update
-sudo apt install -y build-essential pkg-config git cmake libvulkan-dev glslc spirv-headers libgtk-3-dev libwebkit2gtk-4.1-dev libasound2-dev libayatana-appindicator3-dev ydotool
+sudo apt install -y build-essential pkg-config git cmake libvulkan-dev glslc spirv-headers libgtk-3-dev libwebkit2gtk-4.1-dev libasound2-dev libayatana-appindicator3-dev pulseaudio-utils ydotool
 ```
 
 On Debian/Ubuntu releases where `ydotoold` is a separate package, also run `sudo apt install ydotoold`. If `libwebkit2gtk-4.1-dev` is unavailable, use `libwebkit2gtk-4.0-dev`.
@@ -157,13 +159,13 @@ On Debian/Ubuntu releases where `ydotoold` is a separate package, also run `sudo
 ### Fedora
 
 ```bash
-sudo dnf install -y gcc gcc-c++ make pkgconf-pkg-config git cmake vulkan-loader-devel vulkan-headers glslc spirv-headers-devel gtk3-devel webkit2gtk4.1-devel alsa-lib-devel libayatana-appindicator-gtk3-devel ydotool
+sudo dnf install -y gcc gcc-c++ make pkgconf-pkg-config git cmake vulkan-loader-devel vulkan-headers glslc spirv-headers-devel gtk3-devel webkit2gtk4.1-devel alsa-lib-devel libayatana-appindicator-gtk3-devel pulseaudio-utils ydotool
 ```
 
 ### Arch Linux and Manjaro
 
 ```bash
-sudo pacman -S base-devel pkgconf git cmake vulkan-headers vulkan-icd-loader shaderc spirv-headers gtk3 webkit2gtk alsa-lib libayatana-appindicator ydotool
+sudo pacman -S base-devel pkgconf git cmake vulkan-headers vulkan-icd-loader shaderc spirv-headers gtk3 webkit2gtk alsa-lib libayatana-appindicator libpulse ydotool
 ```
 
 Then build and install:
@@ -195,22 +197,22 @@ User settings and transcription history remain in `~/.wis-free-v3/` so upgrades 
 
 ## KDE release checks
 
-Automated checks cover recording state transitions and the red/yellow/white tray icons. Linux CI additionally launches the packaged app with `--background` under Xvfb and checks that its real StatusNotifier item exposes a white microphone with status **Active** while idle. These checks do not exercise physical keyboard input or `/dev/input` permissions.
+Automated checks cover recording state transitions and the shared tray artwork. Linux CI additionally launches the packaged app with `--background` under Xvfb and checks that its real StatusNotifier item exposes the app icon with status **Active** while idle. These checks do not exercise the overlay, physical keyboard input, or `/dev/input` permissions.
 
 Before claiming a release has been tested on Plasma, run these checks in both a **Plasma Wayland** session and a **Plasma X11** session where available. Record the distribution, Plasma version, session type (`echo "$XDG_SESSION_TYPE"`), package version, and result. A Windows build or a headless launcher test does not count as a completed Plasma session check.
 
 | Check | Expected result |
 | --- | --- |
 | Launch from the application menu, then launch again | Settings opens; there is one WIS process and one tray entry. |
-| Record a shortcut in WIS Settings, hold it, and release it | Red while held; yellow immediately on release and throughout transcription/refinement/typing; white after insertion. |
+| Record a shortcut in WIS Settings, hold it, and release it | Live audio waves while held; gold pulses during transcription; overlay disappears after insertion. The tray icon stays unchanged. |
 | Hold a shortcut with a trigger key long enough for keyboard auto-repeat | The app keeps recording until release. |
-| Press the shortcut again while text is still being inserted | The app stays yellow and finishes inserting the current result once. |
+| Press the shortcut again while text is still being inserted | The overlay remains visible and WIS finishes inserting the current result once. |
 | Restart WIS after enabling input-device access | The shortcut saved in Settings is ready without beginning a recording. |
 | Dictate into Kate, a browser, and an XWayland app on Wayland | Text reaches the focused field once, with the intended punctuation and keyboard layout. |
 | Change the default microphone in Plasma and record again | The selected/default device records usable audio. |
 | Open Settings from the tray, close it, and dictate again | The window hides; the app remains running and text reaches the intended app. |
 | Enable autostart, log out, and log back in | One tray instance starts without opening Settings or beginning a recording. |
-| Leave WIS idle after login with Settings closed | The white microphone remains in the tray throughout the idle period. |
+| Leave WIS idle after login with Settings closed | The app icon remains in the tray throughout the idle period; the overlay stays hidden. |
 | Disable WIS in Plasma Autostart settings, then reopen WIS Settings | **Start with system** is off. |
 
 ## Desktop integration references

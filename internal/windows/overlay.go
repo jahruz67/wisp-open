@@ -4,7 +4,7 @@
 // WINDOWS-ONLY FILE — Native Windows overlay window using
 // Win32 API directly (CreateWindowEx, GDI drawing, etc.).
 // This shows a pill-shaped overlay on screen during recording.
-// The Linux equivalent is internal/linux/overlay.go (no-op).
+// Linux and macOS provide matching native overlays in their platform packages.
 // ============================================================
 
 package windows
@@ -86,7 +86,7 @@ const (
 	COLOR_BG_DARK    = 0x332012 // Lightly saturated navy (BGR for #122033)
 	COLOR_MIC_RED    = 0x4545FF // Red for recording (BGR)
 	COLOR_MIC_GREEN  = 0x50C850 // Green for ready
-	COLOR_MIC_ORANGE = 0x00CCFF // Processing gold, matching the tray icon
+	COLOR_MIC_ORANGE = 0x00CCFF // Processing gold
 	COLOR_WHITE      = 0xFFEADC // Ice blue (BGR for #dceaff)
 	COLOR_GRAY       = 0x808080
 )

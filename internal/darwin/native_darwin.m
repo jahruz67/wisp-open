@@ -156,7 +156,23 @@ bool wis_is_in_startup(void) {
     [[NSColor colorWithSRGBRed:0.071 green:0.125 blue:0.200 alpha:0.94] setFill];
     [[NSBezierPath bezierPathWithRoundedRect:bounds xRadius:23 yRadius:23] fill];
 
-    BOOL processing = [self.mode hasPrefix:@"Transcribing"] || [self.mode hasPrefix:@"Processing"] || [self.mode hasPrefix:@"Typing"];
+    BOOL recording = [self.mode hasPrefix:@"Recording"];
+    BOOL processing = [self.mode hasPrefix:@"Transcribing"] || [self.mode hasPrefix:@"Processing"];
+    if (!recording && !processing) {
+        BOOL error = [self.mode isEqualToString:@"Error"] || [self.mode containsString:@"Key"] || [self.mode containsString:@"Err"];
+        NSColor *color = error ? [NSColor colorWithSRGBRed:1 green:0.271 blue:0.271 alpha:1]
+                               : [NSColor colorWithSRGBRed:0.863 green:0.918 blue:1 alpha:1];
+        NSMutableParagraphStyle *paragraph = [NSMutableParagraphStyle new];
+        paragraph.alignment = NSTextAlignmentCenter;
+        paragraph.lineBreakMode = NSLineBreakByTruncatingTail;
+        NSDictionary *attributes = @{NSFontAttributeName: [NSFont systemFontOfSize:18 weight:NSFontWeightSemibold],
+                                     NSForegroundColorAttributeName: color,
+                                     NSParagraphStyleAttributeName: paragraph};
+        CGFloat height = [self.mode sizeWithAttributes:attributes].height;
+        [self.mode drawInRect:NSMakeRect(4, (NSHeight(bounds) - height) / 2, NSWidth(bounds) - 8, height)
+              withAttributes:attributes];
+        return;
+    }
     NSInteger count = processing ? 5 : 7;
     CGFloat width = 4.0;
     CGFloat gap = processing ? 6.0 : 4.0;
@@ -167,8 +183,8 @@ bool wis_is_in_startup(void) {
         : [NSColor colorWithSRGBRed:0.863 green:0.918 blue:1 alpha:1];
     [barColor setFill];
     for (NSInteger i = 0; i < count; i++) {
-        double wave = fabs(sin(self.phase + i * (processing ? 0.45 : 0.8)));
-        double height = processing ? 10.0 + wave * 12.0 : 7.0 + wave * 5.0 + MIN(self.volume * 110.0, 24.0);
+        double wave = fabs(sin(self.phase * (processing ? 3.0 : 6.0) + i * (processing ? 0.3 : 0.8)));
+        double height = processing ? 10.0 + wave * 10.0 : MIN(38.0, 6.0 + wave * 4.0 + self.volume * 120.0);
         NSRect bar = NSMakeRect(start + i * (width + gap), (NSHeight(bounds) - height) / 2.0, width, height);
         [[NSBezierPath bezierPathWithRoundedRect:bar xRadius:2 yRadius:2] fill];
     }
@@ -203,12 +219,13 @@ void wis_overlay_create(void) {
         wisOverlayView = [[WISOverlayView alloc] initWithFrame:frame];
         wisOverlayView.mode = @"Recording";
         wisOverlayPanel.contentView = wisOverlayView;
-        wisOverlayTimer = [NSTimer scheduledTimerWithTimeInterval:(1.0 / 30.0) repeats:YES block:^(NSTimer *timer) {
+        wisOverlayTimer = [NSTimer timerWithTimeInterval:(1.0 / 60.0) repeats:YES block:^(NSTimer *timer) {
             (void)timer;
             if (!wisOverlayPanel.isVisible) return;
-            wisOverlayView.phase += 0.18;
+            wisOverlayView.phase = NSProcessInfo.processInfo.systemUptime;
             [wisOverlayView setNeedsDisplay:YES];
         }];
+        [NSRunLoop.mainRunLoop addTimer:wisOverlayTimer forMode:NSRunLoopCommonModes];
     });
 }
 
@@ -217,9 +234,11 @@ void wis_overlay_show(const char *message) {
     WISRunOnMain(^{
         if (!wisOverlayPanel) wis_overlay_create();
         wisOverlayView.mode = mode;
+        wisOverlayView.phase = NSProcessInfo.processInfo.systemUptime;
+        [wisOverlayView setNeedsDisplay:YES];
         NSScreen *screen = WISScreenAtPoint(NSEvent.mouseLocation);
-        NSRect visible = screen.visibleFrame;
-        [wisOverlayPanel setFrameOrigin:NSMakePoint(NSMidX(visible) - 60, NSMinY(visible) + 60)];
+        NSRect frame = screen.frame;
+        [wisOverlayPanel setFrameOrigin:NSMakePoint(NSMidX(frame) - 60, NSMinY(frame) + 80)];
         [wisOverlayPanel orderFrontRegardless];
     });
 }
@@ -227,6 +246,8 @@ void wis_overlay_show(const char *message) {
 void wis_overlay_hide(void) { WISRunOnMain(^{ [wisOverlayPanel orderOut:nil]; }); }
 
 void wis_overlay_set_volume(double level) {
+    if (!isfinite(level)) return;
+    level = fmax(0, fmin(1, level));
     WISRunOnMain(^{ wisOverlayView.volume = wisOverlayView.volume * 0.9 + level * 0.1; });
 }
 

@@ -495,7 +495,7 @@ func (a *App) processRecordingFile(recordingPath string) {
 	logger.Info("Processing complete!")
 }
 
-// finishTextInsertion is synchronous: the microphone stays yellow until all
+// finishTextInsertion is synchronous: the overlay stays visible until all
 // typing/pasting has returned, including slow native input commands.
 func (a *App) finishTextInsertion(insert func()) {
 	tray.UpdateStatus("Typing...")

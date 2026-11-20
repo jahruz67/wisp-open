@@ -9,15 +9,13 @@ package tray
 #include <stdlib.h>
 
 void wis_tray_start(const char *label, const char *shortcut, bool startup, const void *icon, int iconLen);
-void wis_tray_set_status(const char *status, const void *icon, int iconLen, bool templateIcon);
+void wis_tray_set_status(const char *status);
 void wis_tray_set_startup(bool checked);
 */
 import "C"
 
 import (
-	_ "embed"
 	"runtime"
-	"strings"
 	"sync"
 	"unsafe"
 
@@ -33,15 +31,6 @@ type App interface {
 	ShowSettings()
 	Version() string
 }
-
-//go:embed icon.png
-var iconData []byte
-
-//go:embed icon_recording.png
-var iconRecordingData []byte
-
-//go:embed icon_transcribing.png
-var iconTranscribingData []byte
 
 var (
 	darwinApp        App
@@ -69,7 +58,7 @@ func Start(app App) {
 	cShortcut := C.CString(shortcut)
 	defer C.free(unsafe.Pointer(label))
 	defer C.free(unsafe.Pointer(cShortcut))
-	withIcon(iconData, func(ptr unsafe.Pointer, length C.int) {
+	withIcon(DefaultIconBytes(), func(ptr unsafe.Pointer, length C.int) {
 		C.wis_tray_start(label, cShortcut, C.bool(platform.IsInStartup()), ptr, length)
 	})
 }
@@ -87,23 +76,10 @@ func UpdateStatus(status string) {
 	statusMu.Lock()
 	lastStatus = status
 	statusMu.Unlock()
-	data := iconData
-	templateIcon := true
-	if strings.Contains(status, "Recording") {
-		data = iconRecordingData
-		templateIcon = false
-	} else if strings.Contains(status, "Processing") || strings.Contains(status, "Transcribing") || strings.Contains(status, "Typing") {
-		data = iconTranscribingData
-		templateIcon = false
-	}
 	cStatus := C.CString(status)
 	defer C.free(unsafe.Pointer(cStatus))
-	withIcon(data, func(ptr unsafe.Pointer, length C.int) {
-		C.wis_tray_set_status(cStatus, ptr, length, C.bool(templateIcon))
-	})
+	C.wis_tray_set_status(cStatus)
 }
-
-func DefaultIconBytes() []byte { return iconData }
 
 func SetOnStartupChanged(fn func(bool)) { onStartupChanged = fn }
 

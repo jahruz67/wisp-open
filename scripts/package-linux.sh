@@ -146,19 +146,19 @@ else
 fi
 
 echo "[1/5] Checking Linux build dependencies..."
-if ! pkg-config --exists gtk+-3.0 || ! webkit2_ok || ! pkg-config --exists alsa || ! appindicator_ok; then
+if ! pkg-config --exists gtk+-3.0 gtk-layer-shell-0 x11 xext xrandr cairo-xlib || ! webkit2_ok || ! pkg-config --exists alsa || ! appindicator_ok; then
     echo "[ERROR] Missing one or more native build dependencies."
     echo ""
     echo "Ubuntu/Debian:"
-    echo "  sudo apt update && sudo apt install -y build-essential pkg-config git cmake libvulkan-dev glslc spirv-headers libgtk-3-dev libwebkit2gtk-4.0-dev libasound2-dev libayatana-appindicator3-dev dpkg-dev rpm"
+    echo "  sudo apt update && sudo apt install -y build-essential pkg-config git cmake libvulkan-dev glslc spirv-headers libgtk-3-dev libgtk-layer-shell-dev libx11-dev libxext-dev libxrandr-dev xwayland libwebkit2gtk-4.0-dev libasound2-dev libayatana-appindicator3-dev pulseaudio-utils dpkg-dev rpm"
     echo "  sudo apt install -y ydotool  (recommended for direct keyboard injection)"
     echo ""
     echo "Fedora:"
-    echo "  sudo dnf install -y gcc gcc-c++ make pkgconf-pkg-config git cmake vulkan-loader-devel vulkan-headers glslc spirv-headers-devel gtk3-devel webkit2gtk4.1-devel alsa-lib-devel libayatana-appindicator-gtk3-devel rpm-build"
+    echo "  sudo dnf install -y gcc gcc-c++ make pkgconf-pkg-config git cmake vulkan-loader-devel vulkan-headers glslc spirv-headers-devel gtk3-devel gtk-layer-shell-devel libX11-devel libXext-devel libXrandr-devel xorg-x11-server-Xwayland webkit2gtk4.1-devel alsa-lib-devel libayatana-appindicator-gtk3-devel pulseaudio-utils rpm-build"
     echo "  sudo dnf install -y ydotool  (recommended for direct keyboard injection)"
     echo ""
     echo "Arch Linux:"
-    echo "  sudo pacman -S base-devel pkgconf git cmake vulkan-headers vulkan-icd-loader shaderc spirv-headers gtk3 webkit2gtk alsa-lib libayatana-appindicator"
+    echo "  sudo pacman -S base-devel pkgconf git cmake vulkan-headers vulkan-icd-loader shaderc spirv-headers gtk3 gtk-layer-shell libx11 libxext libxrandr xorg-xwayland webkit2gtk alsa-lib libayatana-appindicator libpulse"
     echo "  sudo pacman -S ydotool  (recommended for direct keyboard injection)"
     echo ""
     exit 1
@@ -312,7 +312,7 @@ Priority: optional
 Architecture: $ARCH_DEB
 Maintainer: $MAINTAINER
 Installed-Size: $INSTALLED_SIZE
-Depends: libc6 (>= $GLIBC_VERSION), libgtk-3-0, $WEBKIT_DEB_DEP, libasound2, $APPINDICATOR_DEB_DEP, libvulkan1, ydotool, ydotoold | ydotool (>= 1.0.0)
+Depends: libc6 (>= $GLIBC_VERSION), libgtk-3-0, libgtk-layer-shell0 (>= 0.6), libx11-6, libxext6, libxrandr2, xwayland, $WEBKIT_DEB_DEP, libasound2, $APPINDICATOR_DEB_DEP, libvulkan1, pulseaudio-utils, ydotool, ydotoold | ydotool (>= 1.0.0)
 Description: $COMMENT
  WIS Free V3 is a desktop voice dictation app built with Go and Wails.
  The package includes the integration needed to start ydotool for direct typing.
@@ -367,6 +367,8 @@ Release:        $PKG_RELEASE%{?dist}
 Summary:        $COMMENT
 License:        $LICENSE
 Requires:       ydotool
+Requires:       /usr/bin/pactl
+Requires:       /usr/bin/Xwayland
 Provides:       application() application($APP_NAME.desktop)
 
 %description

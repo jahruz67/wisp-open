@@ -43,7 +43,7 @@ void wis_tray_start(const char *label, const char *shortcut, bool startup, const
         wisStatusItem = [NSStatusBar.systemStatusBar statusItemWithLength:NSSquareStatusItemLength];
         NSImage *image = [[NSImage alloc] initWithData:iconCopy];
         image.size = NSMakeSize(18, 18);
-        image.template = YES;
+        image.template = NO;
         wisStatusItem.button.image = image;
         wisStatusItem.button.toolTip = [NSString stringWithFormat:@"%@ — %@ to record", labelValue, shortcutValue];
 
@@ -68,16 +68,11 @@ void wis_tray_start(const char *label, const char *shortcut, bool startup, const
     });
 }
 
-void wis_tray_set_status(const char *status, const void *icon, int iconLen, bool templateIcon) {
+void wis_tray_set_status(const char *status) {
     NSString *statusValue = [NSString stringWithUTF8String:status ?: "Ready"];
-    NSData *iconCopy = icon && iconLen > 0 ? [NSData dataWithBytes:icon length:(NSUInteger)iconLen] : nil;
     WISTrayOnMain(^{
         wisStatusMenuItem.title = [@"Status: " stringByAppendingString:statusValue];
         wisStatusItem.button.toolTip = [NSString stringWithFormat:@"%@ — %@", wisTrayLabel ?: @"wis-free-v3", statusValue];
-        NSImage *image = [[NSImage alloc] initWithData:iconCopy];
-        image.size = NSMakeSize(18, 18);
-        image.template = templateIcon;
-        wisStatusItem.button.image = image;
     });
 }
 

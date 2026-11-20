@@ -340,8 +340,8 @@ appindicator_ok() {
 }
 
 if command_exists pkg-config; then
-    if ! pkg-config --exists gtk+-3.0 || ! webkit2_ok; then
-        echo "[WARNING] Missing Wails dependencies (GTK3 / WebKit2GTK)."
+    if ! pkg-config --exists gtk+-3.0 gtk-layer-shell-0 x11 xext xrandr cairo-xlib || ! webkit2_ok; then
+        echo "[WARNING] Missing window/overlay dependencies (GTK3 / WebKit2GTK / layer shell / X11)."
         MISSING_DEPS=1
     fi
     if ! pkg-config --exists alsa; then
@@ -353,6 +353,14 @@ if command_exists pkg-config; then
         MISSING_DEPS=1
     fi
 fi
+if ! command_exists Xwayland; then
+    echo "[WARNING] Missing XWayland (used for the recording overlay on desktops without layer shell)."
+    MISSING_DEPS=1
+fi
+if ! command_exists pactl; then
+    echo "[WARNING] Missing pactl (required to mute and restore audio while recording)."
+    MISSING_DEPS=1
+fi
 
 if [ $MISSING_DEPS -eq 1 ]; then
     echo ""
@@ -362,17 +370,17 @@ if [ $MISSING_DEPS -eq 1 ]; then
     echo "with the command shown in the app Settings window."
     echo ""
     
-    DEBIAN_DEPS="build-essential pkg-config git cmake libvulkan-dev glslc spirv-headers libgtk-3-dev libwebkit2gtk-4.1-dev libasound2-dev libayatana-appindicator3-dev"
-    DEBIAN_DEPS_ALT="build-essential pkg-config git cmake libvulkan-dev glslc spirv-headers libgtk-3-dev libwebkit2gtk-4.0-dev libasound2-dev libayatana-appindicator3-dev"
+    DEBIAN_DEPS="build-essential pkg-config git cmake libvulkan-dev glslc spirv-headers libgtk-3-dev libgtk-layer-shell-dev libx11-dev libxext-dev libxrandr-dev xwayland libwebkit2gtk-4.1-dev libasound2-dev libayatana-appindicator3-dev pulseaudio-utils"
+    DEBIAN_DEPS_ALT="build-essential pkg-config git cmake libvulkan-dev glslc spirv-headers libgtk-3-dev libgtk-layer-shell-dev libx11-dev libxext-dev libxrandr-dev xwayland libwebkit2gtk-4.0-dev libasound2-dev libayatana-appindicator3-dev pulseaudio-utils"
     # Runtime nicety (optional): playerctl pauses media while recording
     DEBIAN_RUNTIME_OPT="playerctl ydotool"
     # Fedora 40+: WebKit2GTK 4.0 packages are gone; use 4.1 + Wails -tags webkit2_41 (see wails build below).
     # pkgconf-pkg-config provides `pkg-config` on Fedora.
-    FEDORA_DEPS="gcc gcc-c++ make pkgconf-pkg-config git cmake vulkan-loader-devel vulkan-headers glslc spirv-headers-devel gtk3-devel webkit2gtk4.1-devel alsa-lib-devel libayatana-appindicator-gtk3-devel"
+    FEDORA_DEPS="gcc gcc-c++ make pkgconf-pkg-config git cmake vulkan-loader-devel vulkan-headers glslc spirv-headers-devel gtk3-devel gtk-layer-shell-devel libX11-devel libXext-devel libXrandr-devel xorg-x11-server-Xwayland webkit2gtk4.1-devel alsa-lib-devel libayatana-appindicator-gtk3-devel pulseaudio-utils"
     # Same as FEDORA_DEPS but classic libappindicator (some spins/repos lack Ayatana -devel)
-    FEDORA_DEPS_ALT="gcc gcc-c++ make pkgconf-pkg-config git cmake vulkan-loader-devel vulkan-headers glslc spirv-headers-devel gtk3-devel webkit2gtk4.1-devel alsa-lib-devel libappindicator-gtk3-devel"
+    FEDORA_DEPS_ALT="gcc gcc-c++ make pkgconf-pkg-config git cmake vulkan-loader-devel vulkan-headers glslc spirv-headers-devel gtk3-devel gtk-layer-shell-devel libX11-devel libXext-devel libXrandr-devel xorg-x11-server-Xwayland webkit2gtk4.1-devel alsa-lib-devel libappindicator-gtk3-devel pulseaudio-utils"
     FEDORA_RUNTIME_OPT="playerctl ydotool"
-    ARCH_DEPS="base-devel pkgconf git cmake vulkan-headers vulkan-icd-loader shaderc spirv-headers gtk3 webkit2gtk alsa-lib libayatana-appindicator"
+    ARCH_DEPS="base-devel pkgconf git cmake vulkan-headers vulkan-icd-loader shaderc spirv-headers gtk3 gtk-layer-shell libx11 libxext libxrandr xorg-xwayland webkit2gtk alsa-lib libayatana-appindicator libpulse"
     ARCH_RUNTIME_OPT="playerctl ydotool"
     
     echo "The full list of dependencies needed:"

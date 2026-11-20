@@ -3,8 +3,8 @@
 package main
 
 import (
+	"bytes"
 	"context"
-	"image/color"
 	"image/png"
 	"os"
 	"os/exec"
@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"wis-free-v3/internal/ui/tray"
 
 	"github.com/godbus/dbus/v5"
 	"github.com/godbus/dbus/v5/prop"
@@ -34,7 +36,7 @@ func (w *testTrayWatcher) RegisterStatusNotifierItem(item string, sender dbus.Se
 
 // This checks the real packaged app's idle indicator, not just the PNG helper.
 // CI runs it with Xvfb and a private D-Bus session, without a physical desktop.
-func TestLinuxBackgroundLaunchKeepsWhiteTrayIcon(t *testing.T) {
+func TestLinuxBackgroundLaunchKeepsAppTrayIcon(t *testing.T) {
 	if os.Getenv("WIS_TEST_LINUX_TRAY") != "1" {
 		t.Skip("set WIS_TEST_LINUX_TRAY=1 to launch the app in an isolated test desktop")
 	}
@@ -115,17 +117,15 @@ func TestLinuxBackgroundLaunchKeepsWhiteTrayIcon(t *testing.T) {
 	}
 	for {
 		if ctx.Err() != nil {
-			t.Fatal("idle tray never exposed its white microphone")
+			t.Fatal("idle tray never exposed its app icon")
 		}
 		icon, _ := read("IconName").Value().(string)
-		file, err := os.Open(icon)
+		data, err := os.ReadFile(icon)
 		if err == nil {
-			img, decodeErr := png.Decode(file)
-			file.Close()
+			_, decodeErr := png.Decode(bytes.NewReader(data))
 			if decodeErr == nil {
-				got := color.RGBAModel.Convert(img.At(64, 50)).(color.RGBA)
-				if got != (color.RGBA{255, 255, 255, 255}) {
-					t.Fatalf("idle microphone color = %v, want white", got)
+				if !bytes.Equal(data, tray.DefaultIconBytes()) {
+					t.Fatal("tray icon differs from the Windows app artwork")
 				}
 				break
 			}

@@ -28,7 +28,7 @@ Do not use `dpkg -i` by itself: it does not resolve dependencies. If you already
 Launch **WIS Free V3** from the application menu. The Settings window now opens on a normal launch and shows a two-step Linux checklist:
 
 1. Confirm that **Direct typing** says it is ready. Packaged installs start the included user service automatically. If it is not ready, the app identifies the missing package or stopped service and shows the command for the detected distribution.
-2. Hold **Ctrl+Super** to record (red), then release to transcribe and type (yellow). Wait for the microphone to return to white before recording again. If keyboard access is denied, the status explains how to enable it.
+2. Hold **Ctrl+Super** to record; a floating overlay shows live audio waves. Release to transcribe and type; the overlay pulses gold during transcription and disappears when finished. The tray keeps the same app icon throughout. If keyboard access is denied, the status explains how to enable it.
 
 Enable **Run on System Startup** to launch in the tray at login. On Linux, choose or record the hold-to-record shortcut in WIS Settings; the same in-app shortcut listener works across desktops. GNOME also needs its AppIndicator extension to display tray icons. See the [Linux setup instructions](docs/linux-installation.md#2-hold-to-record-shortcut).
 

@@ -46,6 +46,11 @@ jobs:
             python3 \
             pkg-config \
             libgtk-3-dev \
+            libgtk-layer-shell-dev \
+            libx11-dev \
+            libxext-dev \
+            libxrandr-dev \
+            xwayland \
             libwebkit2gtk-4.1-dev \
             libasound2-dev \
             libayatana-appindicator3-dev \
@@ -116,10 +121,12 @@ jobs:
           grep -q '^Exec=.* --action=toggle$' "$desktop_root/usr/share/applications/wis-free-v3.desktop"
 
           dpkg-deb --field "$deb_package" Depends | grep -q 'ydotool'
+          dpkg-deb --field "$deb_package" Depends | grep -q 'pulseaudio-utils'
           dpkg-deb --contents "$deb_package" | grep -q 'wis-free-v3-ydotool.service'
           dpkg-deb --contents "$deb_package" | grep -q '80-wis-free-v3-uinput.rules'
 
           rpm -qp --requires "$rpm_package" | grep -q 'ydotool'
+          rpm -qp --requires "$rpm_package" | grep -Fxq '/usr/bin/pactl'
           rpm -qlp "$rpm_package" | grep -q 'wis-free-v3-ydotool.service'
           rpm -qlp "$rpm_package" | grep -q '80-wis-free-v3-uinput.rules'
           if rpm -qp --requires "$rpm_package" | grep -Eq '^(gtk3|alsa-lib|webkit2gtk4\.1|libayatana-appindicator-gtk3)$'; then
