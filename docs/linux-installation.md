@@ -91,6 +91,8 @@ Linux release builds target glibc 2.35 and newer. They download the prebuilt eng
 
 In Settings, open **Offline Whisper**, choose a model size, and click **Install Offline Whisper**. The download runs inside Settings with progress and verifies the model's size and SHA-256 checksum. Then select **Local — [model] (offline)** in the Whisper Model dropdown. The engine and model run locally; no transcription API key is needed. Set **AI Refinement** to **None** to keep the entire dictation flow offline.
 
+Settings reports **Engine already installed** when a working engine is present. If it is missing or cannot start, WIS downloads the pinned Linux engine with **Downloading engine** progress, verifies its SHA-256 checksum, and checks it before downloading the model. Downloaded engines are kept in `~/.wis-free-v3/whisper/engine/`; an existing installation is preserved if a replacement download fails.
+
 GPU acceleration requires a compatible Vulkan graphics driver. For Intel/AMD, install your distribution's Mesa Vulkan drivers (`mesa-vulkan-drivers` on Debian/Ubuntu and Fedora; `vulkan-intel` or `vulkan-radeon` on Arch). For NVIDIA, use your distribution's supported NVIDIA driver with Vulkan support. A Vulkan loader alone does not supply a GPU driver. The packaged engine also includes the CPU backend for machines without a usable Vulkan GPU.
 
 If GPU acceleration is unavailable, inspect `vulkaninfo --summary` (from `vulkan-tools`) and the WIS logs under `~/.wis-free-v3/logs/`. Whisper backend diagnostics in the log show which device was detected; installation success alone does not confirm GPU inference. Report the GPU model, driver, and diagnostic output when troubleshooting.

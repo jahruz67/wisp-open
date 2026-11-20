@@ -123,8 +123,8 @@ func (m *Manager) Install(model string) error {
 }
 
 // InstallWithProgress installs a user-selected local model and its engine if
-// needed. Linux and macOS bundle the Whisper engine; other engines are downloaded
-// on demand. No model download occurs during application installation.
+// needed. Linux reuses a bundled engine or downloads it if missing; macOS bundles
+// Whisper. No model download occurs during application installation.
 func (m *Manager) InstallWithProgress(model string, progress chan<- DownloadProgress) error {
 	if info, ok := onnxModels[model]; ok {
 		return m.installONNXModel(model, info, progress)
@@ -149,7 +149,11 @@ func (m *Manager) InstallWithProgress(model string, progress chan<- DownloadProg
 		if err := m.installWindowsEngine(progress); err != nil {
 			return err
 		}
-	} else if runtime.GOOS == "darwin" || runtime.GOOS == "linux" {
+	} else if runtime.GOOS == "linux" {
+		if err := m.installLinuxEngine(progress); err != nil {
+			return err
+		}
+	} else if runtime.GOOS == "darwin" {
 		if err := checkEngine(m.getBinaryPath()); err != nil {
 			return err
 		}
@@ -355,7 +359,7 @@ func (m *Manager) getBinaryPath() string {
 
 // linuxBinaryPath covers release packages, source installs, and development.
 func (m *Manager) linuxBinaryPath() string {
-	var candidates []string
+	candidates := []string{filepath.Join(m.installDir, "engine", "whisper-cli")}
 	if executable, err := os.Executable(); err == nil {
 		if resolved, err := filepath.EvalSymlinks(executable); err == nil {
 			executable = resolved
@@ -376,7 +380,7 @@ func (m *Manager) linuxBinaryPath() string {
 	if binary, err := exec.LookPath("whisper-cli"); err == nil {
 		return binary
 	}
-	return "/usr/lib/wis-free-v3/whisper-cli"
+	return filepath.Join(m.installDir, "engine", "whisper-cli")
 }
 
 func (m *Manager) darwinBinaryPath() string {

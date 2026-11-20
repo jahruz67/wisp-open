@@ -3,7 +3,6 @@
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
 #include <X11/Xutil.h>
-#include <X11/Xresource.h>
 #include <X11/extensions/shape.h>
 #include <X11/extensions/Xrandr.h>
 #include <cairo-xlib.h>
@@ -16,22 +15,6 @@ static Display *display;
 static Window window;
 static Colormap colormap;
 static cairo_surface_t *surface;
-static double scale = 1;
-
-static double display_scale(void) {
-    const char *resources = XResourceManagerString(display);
-    if (!resources) return 1;
-    XrmDatabase database = XrmGetStringDatabase(resources);
-    if (!database) return 1;
-    XrmValue value;
-    char *type;
-    double dpi = 96;
-    if (XrmGetResource(database, "Xft.dpi", "Xft.Dpi", &type, &value) && value.addr)
-        dpi = g_ascii_strtod(value.addr, NULL);
-    XrmDestroyDatabase(database);
-    // Keep dimensions within X11's wire-format limits, even with invalid Xresources.
-    return isfinite(dpi) && dpi > 0 ? CLAMP(dpi / 96, 1.0 / 46, 32767.0 / 126) : 1;
-}
 
 static void position_overlay(void) {
     Window root = DefaultRootWindow(display), child, pointer_root;
@@ -59,15 +42,15 @@ static void position_overlay(void) {
         }
     }
     if (monitors) XRRFreeMonitors(monitors);
-    XMoveWindow(display, window, left + (width - (int)lround(120 * scale)) / 2,
-                top + height - (int)lround((46 + 80) * scale));
+    XMoveWindow(display, window, left + (width - WIS_OVERLAY_WIDTH) / 2,
+                top + height - WIS_OVERLAY_HEIGHT - WIS_OVERLAY_BOTTOM);
 }
 
 // A bounding shape also keeps the pill rounded on noncomposited X11 desktops.
 // An empty input shape makes both X11 and XWayland windows click-through.
 static void shape_overlay(void) {
-    int height = (int)lround(46 * scale);
-    int width = (int)lround(120 * scale);
+    int height = WIS_OVERLAY_HEIGHT;
+    int width = WIS_OVERLAY_WIDTH;
     double radius = height / 2.0;
     XRectangle *rows = g_new(XRectangle, height);
     for (int y = 0; y < height; y++) {
@@ -128,14 +111,13 @@ static gboolean create_overlay(void) {
     attributes.colormap = colormap;
     attributes.background_pixel = 0;
     attributes.border_pixel = 0;
-    scale = display_scale();
-    window = XCreateWindow(display, root, 0, 0, (int)lround(120 * scale), (int)lround(46 * scale),
+    window = XCreateWindow(display, root, 0, 0, WIS_OVERLAY_WIDTH, WIS_OVERLAY_HEIGHT,
                            0, depth, InputOutput, visual,
                            CWOverrideRedirect | CWColormap | CWBackPixel | CWBorderPixel, &attributes);
     configure_window();
     shape_overlay();
     surface = cairo_xlib_surface_create(display, window, visual,
-                                        (int)lround(120 * scale), (int)lround(46 * scale));
+                                        WIS_OVERLAY_WIDTH, WIS_OVERLAY_HEIGHT);
     if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
         g_warning("WIS overlay could not create its X11 drawing surface: %s",
                   cairo_status_to_string(cairo_surface_status(surface)));
@@ -161,7 +143,6 @@ void wis_x11_overlay_draw(void) {
         XNextEvent(display, &event);
     }
     cairo_t *cr = cairo_create(surface);
-    cairo_scale(cr, scale, scale);
     cairo_push_group(cr);
     wis_linux_overlay_paint(cr);
     cairo_pop_group_to_source(cr);

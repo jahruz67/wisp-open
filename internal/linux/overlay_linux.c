@@ -73,8 +73,9 @@ void wis_linux_overlay_paint(cairo_t *cr) {
 }
 
 static gboolean draw_overlay(GtkWidget *widget, cairo_t *cr, gpointer unused) {
-    (void)widget;
     (void)unused;
+    int scale = gtk_widget_get_scale_factor(widget);
+    cairo_scale(cr, 1.0 / MAX(1, scale), 1.0 / MAX(1, scale));
     wis_linux_overlay_paint(cr);
     return TRUE;
 }
@@ -100,7 +101,18 @@ static GdkMonitor *overlay_monitor(void) {
     return monitor ? monitor : gdk_display_get_monitor(display, 0);
 }
 
-static void create_overlay(void) {
+static void size_overlay(GdkMonitor *monitor) {
+    int scale = monitor ? MAX(1, gdk_monitor_get_scale_factor(monitor)) : 1;
+    int width = MAX(1, (WIS_OVERLAY_WIDTH + scale / 2) / scale);
+    int height = MAX(1, (WIS_OVERLAY_HEIGHT + scale / 2) / scale);
+    // Layer-shell uses the widget's requested size, not GtkWindow's default size.
+    gtk_widget_set_size_request(overlay, width, height);
+    gtk_window_resize(GTK_WINDOW(overlay), width, height);
+    gtk_layer_set_margin(GTK_WINDOW(overlay), GTK_LAYER_SHELL_EDGE_BOTTOM,
+                         (WIS_OVERLAY_BOTTOM + scale / 2) / scale);
+}
+
+static void create_overlay(GdkMonitor *monitor) {
     overlay = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     GtkWindow *window = GTK_WINDOW(overlay);
     gtk_window_set_title(window, "WIS Recording Overlay");
@@ -112,7 +124,6 @@ static void create_overlay(void) {
     gtk_window_set_skip_pager_hint(window, TRUE);
     gtk_window_set_keep_above(window, TRUE);
     gtk_window_set_type_hint(window, GDK_WINDOW_TYPE_HINT_NOTIFICATION);
-    gtk_window_set_default_size(window, 120, 46);
     gtk_widget_set_app_paintable(overlay, TRUE);
     GdkVisual *visual = gdk_screen_get_rgba_visual(gtk_widget_get_screen(overlay));
     if (visual) gtk_widget_set_visual(overlay, visual);
@@ -120,9 +131,12 @@ static void create_overlay(void) {
     gtk_layer_init_for_window(window);
     gtk_layer_set_namespace(window, "wis-free-v3-overlay");
     gtk_layer_set_layer(window, GTK_LAYER_SHELL_LAYER_OVERLAY);
+    gtk_layer_set_monitor(window, monitor);
     gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_BOTTOM, TRUE);
-    gtk_layer_set_margin(window, GTK_LAYER_SHELL_EDGE_BOTTOM, 80);
+    // Position against the screen edge, independent of panel/work-area reservations.
+    gtk_layer_set_exclusive_zone(window, -1);
     gtk_layer_set_keyboard_mode(window, GTK_LAYER_SHELL_KEYBOARD_MODE_NONE);
+    size_overlay(monitor);
     g_signal_connect(overlay, "draw", G_CALLBACK(draw_overlay), NULL);
     gtk_widget_realize(overlay);
     cairo_region_t *empty = cairo_region_create();
@@ -150,10 +164,11 @@ static gboolean show_overlay(void) {
         overlay_x11 = TRUE;
         return wis_x11_overlay_show();
     }
-    if (!overlay) create_overlay();
     GdkMonitor *monitor = overlay_monitor();
+    if (!overlay) create_overlay(monitor);
     if (monitor && gtk_layer_get_monitor(GTK_WINDOW(overlay)) != monitor)
         gtk_layer_set_monitor(GTK_WINDOW(overlay), monitor);
+    size_overlay(monitor);
     gtk_widget_show(overlay);
     gtk_widget_queue_draw(overlay);
     return TRUE;
