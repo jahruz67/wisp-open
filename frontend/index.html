@@ -177,7 +177,7 @@
 
             <!-- Whisper Model -->
             <div class="section">
-                <label>Whisper Model</label>
+                <label>Transcription Model</label>
                 <select id="whisperModel" onchange="saveWhisperModel()" class="form-control">
                     <option value="whisper-large-v3-turbo">Whisper Large v3 Turbo (Groq)</option>
                     <option value="whisper-large-v3">Whisper Large v3 (Groq)</option>
@@ -247,9 +247,9 @@
                 </div>
             </div>
 
-            <!-- Offline Whisper -->
+            <!-- Offline transcription -->
             <div id="offlineWhisperSection" class="section" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border);">
-                <label>Offline Whisper</label>
+                <label>Offline Transcription</label>
 
                 <!-- Connection Status -->
                 <div id="connectionStatus" style="margin-bottom: 14px; padding: 9px 14px; border-radius: 7px; text-align: center; font-size: 13px;">
@@ -261,34 +261,30 @@
                     <p id="whisperInstallStatus" class="hint" role="status" aria-live="polite"></p>
                     <div id="whisperNotInstalled">
                         <p class="hint" style="margin-bottom: 14px;">
-                            Install offline transcription for use without internet. Uses GPU acceleration if available.
+                            Download a model for offline dictation. Whisper can use GPU acceleration; other models run on CPU. Installing a different model replaces the current one after installation succeeds.
                         </p>
                         <div style="margin-bottom: 14px;">
-                            <label style="font-size: 12px; color: var(--text-2); margin-bottom: 6px;">Model Size</label>
-                            <select id="whisperModelSelect" class="form-control">
-                                <option value="tiny">Tiny (75 MB) — Fastest</option>
-                                <option value="base">Base (150 MB) — Fast</option>
-                                <option value="small" selected>Small (500 MB) — Recommended</option>
-                                <option value="medium">Medium (1.5 GB) — Best Quality</option>
-                            </select>
+                            <label style="font-size: 12px; color: var(--text-2); margin-bottom: 6px;">Local Model</label>
+                            <select id="whisperModelSelect" class="form-control" disabled></select>
+                            <p id="localModelDescription" class="hint" style="margin-top: 8px;">Loading available models…</p>
                         </div>
-                        <button onclick="installWhisper()" id="installBtn">
-                            Install Offline Whisper
+                        <button onclick="installWhisper()" id="installBtn" disabled>
+                            Install Selected Model
                         </button>
                     </div>
 
                     <div id="whisperInstalled" style="display: none;">
                         <div style="background: var(--green-dim); border: 1px solid rgba(61, 186, 110, 0.25); border-radius: 7px; padding: 13px 16px; margin-bottom: 14px;">
-                            <div style="color: var(--green); font-weight: 500; font-size: 13px;"> Offline Whisper installed</div>
+                            <div style="color: var(--green); font-weight: 500; font-size: 13px;"> Offline transcription installed</div>
                             <div style="font-size: 12px; color: var(--text-2); margin-top: 4px;">
                                 Model: <span id="installedModel">—</span>
                             </div>
                         </div>
                         <p class="hint" style="margin-bottom: 14px;">
-                            Select the local model in the Whisper Model dropdown above to use offline transcription. Set AI Model to None for fully offline dictation.
+                            Select the local model in the Transcription Model dropdown above to use offline transcription. Set AI Model to None for fully offline dictation.
                         </p>
                         <button onclick="uninstallWhisper()" id="uninstallWhisperBtn" class="btn-danger">
-                            Uninstall Offline Whisper
+                            Uninstall Offline Transcription
                         </button>
                     </div>
                 </div>
@@ -770,7 +766,7 @@
             try {
                 const isOnline = await window.go.main.App.CheckOnline();
                 const statusEl = document.getElementById('connectionStatus');
-                const hasLocalModel = document.getElementById('whisperModel').querySelector('option[value^="local-"]') !== null;
+                const hasLocalModel = document.getElementById('whisperModel').querySelector('option[value^="local-"]:not(:disabled)') !== null;
 
                 if (isOnline) {
                     statusEl.innerHTML = '● Online';
@@ -779,8 +775,8 @@
                     statusEl.style.border = '1px solid rgba(61, 186, 110, 0.2)';
                 } else {
                     statusEl.textContent = hasLocalModel
-                        ? '● Offline \u2014 local Whisper available'
-                        : '● Offline \u2014 install local Whisper for transcription';
+                        ? '● Offline \u2014 local transcription available'
+                        : '● Offline \u2014 install a local model for transcription';
                     statusEl.style.background = 'var(--red-dim)';
                     statusEl.style.color = 'var(--red)';
                     statusEl.style.border = '1px solid rgba(224, 82, 82, 0.2)';
@@ -802,12 +798,45 @@
             }
         }
 
-        // Check whisper installation status
+        async function loadLocalModels() {
+            const select = document.getElementById('whisperModelSelect');
+            const description = document.getElementById('localModelDescription');
+            try {
+                const models = await window.go.main.App.GetAvailableWhisperModels();
+                select.replaceChildren();
+                for (const groupName of ['Whisper', 'Other local models']) {
+                    const group = document.createElement('optgroup');
+                    group.label = groupName;
+                    for (const model of models.filter(model => model.engine === groupName)) {
+                        const option = document.createElement('option');
+                        option.value = model.name;
+                        option.textContent = model.label + ' (' + model.size + ')';
+                        option.dataset.description = model.description;
+                        group.appendChild(option);
+                    }
+                    if (group.children.length) select.appendChild(group);
+                }
+                select.value = 'small';
+                select.onchange = () => {
+                    const model = select.selectedOptions[0];
+                    description.textContent = model
+                        ? model.dataset.description + ' Sizes are approximate downloads; engines and extracted models need additional disk space.'
+                        : 'No local models are available on this platform.';
+                };
+                select.onchange();
+                renderWhisperInstallState(false);
+            } catch (err) {
+                description.textContent = 'Could not load local models: ' + String(err);
+            }
+        }
+
+        // Check local model installation status.
         function renderWhisperInstallState(installing, label = 'Installing…') {
             const btn = document.getElementById('installBtn');
-            btn.disabled = installing;
-            btn.textContent = installing ? label : 'Install Offline Whisper';
-            document.getElementById('whisperModelSelect').disabled = installing;
+            const select = document.getElementById('whisperModelSelect');
+            btn.disabled = installing || !select.value;
+            btn.textContent = installing ? label : 'Install Selected Model';
+            select.disabled = installing || !select.value;
             document.getElementById('uninstallWhisperBtn').disabled = installing;
         }
 
@@ -816,19 +845,24 @@
                 const info = await window.go.main.App.GetWhisperInfo();
                 const whisperSelect = document.getElementById('whisperModel');
                 const selectedModel = whisperSelect.value || configuredWhisperModel;
+                const modelSelect = document.getElementById('whisperModelSelect');
+                if (!modelSelect.dataset.initialized && modelSelect.options.length) {
+                    modelSelect.value = info.installed ? info.model : 'small';
+                    modelSelect.dataset.initialized = 'true';
+                    modelSelect.onchange();
+                }
 
                 // Remove any existing local option
                 whisperSelect.querySelectorAll('option[value^="local-"]').forEach(option => option.remove());
 
                 if (info.installed) {
-                    document.getElementById('whisperNotInstalled').style.display = 'none';
                     document.getElementById('whisperInstalled').style.display = 'block';
-                    document.getElementById('installedModel').textContent = info.model + ' model';
+                    document.getElementById('installedModel').textContent = info.label || info.model;
 
                     // Add local option to whisper dropdown
                     const localOption = document.createElement('option');
                     localOption.value = 'local-' + info.model;
-                    localOption.textContent = '↑ Local \u2014 ' + info.model + ' (offline)';
+                    localOption.textContent = '🎙︎ ' + (info.label || info.model) + ' · Offline';
                     localOption.style.fontWeight = 'bold';
                     whisperSelect.insertBefore(localOption, whisperSelect.firstChild);
 					if (selectedModel === localOption.value) {
@@ -881,7 +915,7 @@
 
         // Uninstall whisper
         window.uninstallWhisper = async function () {
-            if (!confirm('Uninstall offline Whisper? This will delete the downloaded model.')) {
+            if (!confirm('Uninstall offline transcription? This will delete the downloaded model and local engines.')) {
                 return;
             }
 
@@ -896,6 +930,7 @@
                 alert('Uninstall failed: ' + err);
             } finally {
                 await checkWhisperStatus();
+                await checkConnection();
             }
         };
 
@@ -944,9 +979,23 @@
                     document.getElementById('whisperInstallStatus').textContent = label;
 				});
 
-				window.runtime.EventsOn('whisper:install-complete', async function () {
+				window.runtime.EventsOn('whisper:install-complete', async function (info) {
 					renderWhisperInstallState(false);
 					await checkWhisperStatus();
+                    if (configuredWhisperModel.startsWith('local-')) {
+                        const model = 'local-' + info.model;
+                        try {
+                            const result = await window.go.main.App.SaveSettings({ whisper_model: model });
+                            if (result !== 'Settings saved successfully') {
+                                throw new Error(result || 'Could not save the selected model');
+                            }
+                            configuredWhisperModel = model;
+                            document.getElementById('whisperModel').value = model;
+                        } catch (err) {
+                            document.getElementById('whisperInstallStatus').textContent = 'Model installed. Select it above to activate it: ' + String(err);
+                        }
+                    }
+                    await checkConnection();
 					showSaveStatus('Offline model installed');
 				});
 
@@ -957,6 +1006,7 @@
 				});
             }
 
+            await loadLocalModels();
             await checkWhisperStatus();
             await checkConnection();
             window.addEventListener('focus', refreshMacStatus);

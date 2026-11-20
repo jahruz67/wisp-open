@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -412,11 +411,11 @@ func (a *App) processRecordingFile(recordingPath string) {
 	var text string
 	var err error
 
-	// Check if using local whisper
+	// Check if using a local transcription model.
 	isLocal := strings.HasPrefix(a.config.WhisperModel, "local-")
 
 	if isLocal {
-		// Use local whisper.cpp
+		// The local manager selects whisper.cpp or sherpa-onnx for the installed model.
 		if a.whisperManager == nil {
 			var mgrErr error
 			a.whisperManager, mgrErr = whisper.NewManager()
@@ -427,7 +426,14 @@ func (a *App) processRecordingFile(recordingPath string) {
 		}
 
 		if a.whisperManager != nil {
-			text, err = a.whisperManager.Transcribe(recordingPath, a.config.Language)
+			info, infoErr := a.whisperManager.GetInstalledInfo()
+			if infoErr != nil {
+				err = infoErr
+			} else if a.config.WhisperModel != "local-"+info.Model {
+				err = fmt.Errorf("the selected local model is not installed; select %s in Settings", whisper.ModelLabel(info.Model))
+			} else {
+				text, err = a.whisperManager.Transcribe(recordingPath, a.config.Language)
+			}
 		}
 	} else {
 		// Use cloud API
@@ -861,6 +867,7 @@ func (a *App) GetWhisperInfo() map[string]interface{} {
 	}
 	status["installed"] = true
 	status["model"] = info.Model
+	status["label"] = whisper.ModelLabel(info.Model)
 	status["version"] = info.Version
 	return status
 }
@@ -924,25 +931,11 @@ func (a *App) UninstallWhisper() string {
 		return fmt.Sprintf("Error: %v", err)
 	}
 
-	return "Whisper uninstalled successfully"
+	return "Offline transcription uninstalled successfully"
 }
 
-// GetAvailableWhisperModels returns list of available whisper models,
-// sorted by name for consistent UI display.
+// GetAvailableWhisperModels includes all supported local transcription engines.
+// Keep the binding name for compatibility with existing frontends.
 func (a *App) GetAvailableWhisperModels() []map[string]string {
-	var names []string
-	for name := range whisper.Models {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-
-	models := make([]map[string]string, 0, len(names))
-	for _, name := range names {
-		info := whisper.Models[name]
-		models = append(models, map[string]string{
-			"name": name,
-			"size": info.Size,
-		})
-	}
-	return models
+	return whisper.AvailableModels()
 }

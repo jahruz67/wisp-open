@@ -8,9 +8,9 @@ Windows and Linux are supported. An Apple Silicon-only macOS 13+ preview is also
 
 Download the Apple Silicon preview DMG, drag **WIS Free V3** to Applications, and complete the in-app Microphone and Accessibility checklist. Intel Macs are not supported. The current preview is ad-hoc signed, so follow the Gatekeeper and permission notes in [macOS installation](docs/macos-installation.md).
 
-Local Whisper models are never bundled or downloaded automatically. Select the desired model manually from Settings when you want offline transcription.
+Local models are never bundled or downloaded automatically. In Settings, use **Offline Transcription** to install Whisper, NVIDIA Parakeet TDT v2/v3, Moonshine Tiny/Base, or SenseVoice Small. The picker shows languages and approximate download sizes. Parakeet, Moonshine, and SenseVoice use an engine downloaded on demand and run on CPU on Windows x64, Linux x64, and Apple Silicon macOS. Select the installed model under **Transcription Model**; set **AI Model** to **None** for fully offline dictation.
 
-Linux packages include the same whisper.cpp Vulkan backend used on Windows, enabling offline GPU inference with a compatible Intel, AMD, or NVIDIA Vulkan driver. Choose **Install Offline Whisper** in Settings, then select the installed local model. See [offline setup and GPU requirements](docs/linux-installation.md#offline-whisper-and-gpu-acceleration).
+Linux packages include the same whisper.cpp Vulkan backend used on Windows, enabling offline GPU inference with a compatible Intel, AMD, or NVIDIA Vulkan driver. Choose a Whisper model under **Offline Transcription** in Settings, click **Install Selected Model**, then select the installed local model. See [offline setup and GPU requirements](docs/linux-installation.md#offline-whisper-and-gpu-acceleration).
 
 ## Install on Linux
 

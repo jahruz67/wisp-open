@@ -1,4 +1,4 @@
-// Package whisper provides local offline transcription using whisper.cpp
+// Package whisper provides local offline transcription using whisper.cpp and sherpa-onnx.
 package whisper
 
 import (
@@ -43,9 +43,10 @@ var Models = map[string]struct {
 
 // InstalledInfo stores information about the installed whisper
 type InstalledInfo struct {
-	Version     string `json:"version"`
-	Model       string `json:"model"`
-	InstallPath string `json:"install_path"`
+	Version     string           `json:"version"`
+	Model       string           `json:"model"`
+	InstallPath string           `json:"install_path"`
+	Files       map[string]int64 `json:"files,omitempty"`
 }
 
 // Manager handles whisper installation and execution
@@ -77,6 +78,9 @@ func (m *Manager) ValidateInstallation() error {
 	info, err := m.GetInstalledInfo()
 	if err != nil {
 		return fmt.Errorf("cannot read Whisper installation info: %w", err)
+	}
+	if model, ok := onnxModels[info.Model]; ok {
+		return m.validateONNXInstallation(model, info)
 	}
 
 	modelInfo, ok := Models[info.Model]
@@ -118,10 +122,13 @@ func (m *Manager) Install(model string) error {
 	return m.InstallWithProgress(model, nil)
 }
 
-// InstallWithProgress installs a user-selected local model. Linux and macOS ship
-// the engine with the application, so only the explicitly selected model is
-// downloaded. No model download occurs during application installation.
+// InstallWithProgress installs a user-selected local model and its engine if
+// needed. Linux and macOS bundle the Whisper engine; other engines are downloaded
+// on demand. No model download occurs during application installation.
 func (m *Manager) InstallWithProgress(model string, progress chan<- DownloadProgress) error {
+	if info, ok := onnxModels[model]; ok {
+		return m.installONNXModel(model, info, progress)
+	}
 	if _, ok := Models[model]; !ok {
 		return fmt.Errorf("unknown model: %s", model)
 	}
@@ -185,27 +192,14 @@ func (m *Manager) installLocalModel(model string, progress chan<- DownloadProgre
 		version = "windows-vulkan"
 	}
 	info := InstalledInfo{Version: version, Model: model, InstallPath: m.installDir}
-	data, err := json.MarshalIndent(info, "", "    ")
-	if err != nil {
+	if err := m.saveInstalledInfo(info); err != nil {
 		return err
-	}
-	infoPath := filepath.Join(m.installDir, "installed.json")
-	defer os.Remove(infoPath + ".tmp")
-	if err := os.WriteFile(infoPath+".tmp", data, 0600); err != nil {
-		return fmt.Errorf("failed to save installation info: %w", err)
-	}
-	if err := os.Rename(infoPath+".tmp", infoPath); err != nil {
-		return fmt.Errorf("failed to activate installation info: %w", err)
 	}
 	if err := m.ValidateInstallation(); err != nil {
 		return err
 	}
 	// Keep the previous model usable until its metadata is replaced too.
-	if old != nil && old.Model != model {
-		if oldInfo, ok := Models[old.Model]; ok {
-			_ = os.Remove(filepath.Join(m.installDir, oldInfo.Filename))
-		}
-	}
+	m.removePreviousModel(old, model)
 	logger.Info("Local Whisper %s model installed", model)
 	return nil
 }
@@ -260,6 +254,9 @@ func (m *Manager) Transcribe(audioPath string, language string) (string, error) 
 	info, err := m.GetInstalledInfo()
 	if err != nil {
 		return "", fmt.Errorf("failed to get installation info: %w", err)
+	}
+	if model, ok := onnxModels[info.Model]; ok {
+		return m.transcribeONNX(model, audioPath, language)
 	}
 
 	binaryPath := m.getBinaryPath()
