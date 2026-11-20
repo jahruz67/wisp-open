@@ -56,6 +56,13 @@ jobs:
             dpkg-dev \
             rpm
 
+      - name: Set up Vulkan headers
+        # Whisper needs newer Vulkan C/C++ declarations than Jammy provides.
+        # Keep its system loader; header-only updates do not raise the glibc baseline.
+        run: |
+          git clone --depth 1 --branch v1.3.296 https://github.com/KhronosGroup/Vulkan-Headers.git build/vulkan-headers
+          echo "VULKAN_SDK=$GITHUB_WORKSPACE/build/vulkan-headers" >> "$GITHUB_ENV"
+
       - name: Build shader compiler for Ubuntu 22.04
         # Jammy does not package glslc. Build it here to preserve the glibc baseline.
         run: |
