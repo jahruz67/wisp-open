@@ -123,8 +123,8 @@ func (m *Manager) Install(model string) error {
 }
 
 // InstallWithProgress installs a user-selected local model and its engine if
-// needed. Linux reuses a bundled engine or downloads it if missing; macOS bundles
-// Whisper. No model download occurs during application installation.
+// needed. Linux keeps its downloaded engine with the model so Uninstall removes
+// both. macOS bundles Whisper. App installation does not download models.
 func (m *Manager) InstallWithProgress(model string, progress chan<- DownloadProgress) error {
 	if info, ok := onnxModels[model]; ok {
 		return m.installONNXModel(model, info, progress)
@@ -240,7 +240,7 @@ func verifyModel(model, tempPath string) error {
 	return nil
 }
 
-// Uninstall removes whisper installation
+// Uninstall removes models and all user-managed engines together.
 func (m *Manager) Uninstall() error {
 	if err := os.RemoveAll(m.installDir); err != nil {
 		return fmt.Errorf("failed to remove whisper directory: %w", err)
@@ -357,28 +357,18 @@ func (m *Manager) getBinaryPath() string {
 	return filepath.Join(releaseDir, "main")
 }
 
-// linuxBinaryPath covers release packages, source installs, and development.
+// Only use engines inside the user-managed installation. System/package engines
+// cannot be removed by the offline-transcription uninstall action.
 func (m *Manager) linuxBinaryPath() string {
-	candidates := []string{filepath.Join(m.installDir, "engine", "whisper-cli")}
-	if executable, err := os.Executable(); err == nil {
-		if resolved, err := filepath.EvalSymlinks(executable); err == nil {
-			executable = resolved
-		}
-		binDir := filepath.Dir(executable)
-		candidates = append(candidates,
-			filepath.Join(binDir, "..", "lib", "wis-free-v3", "whisper-cli"),
-			filepath.Join(binDir, "whisper-cli"))
-	}
-	candidates = append(candidates,
+	candidates := []string{
+		filepath.Join(m.installDir, "engine", "whisper-cli"),
 		filepath.Join(m.installDir, "whisper-cli"),
-		filepath.Join(m.installDir, "Release", "whisper-cli"))
+		filepath.Join(m.installDir, "Release", "whisper-cli"),
+	}
 	for _, candidate := range candidates {
 		if stat, err := os.Stat(candidate); err == nil && stat.Mode().IsRegular() && stat.Mode().Perm()&0111 != 0 {
 			return filepath.Clean(candidate)
 		}
-	}
-	if binary, err := exec.LookPath("whisper-cli"); err == nil {
-		return binary
 	}
 	return filepath.Join(m.installDir, "engine", "whisper-cli")
 }

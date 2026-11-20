@@ -944,7 +944,7 @@
             }
 
             try {
-                renderWhisperInstallState(true, 'Removing offline model…');
+                renderWhisperInstallState(true, 'Removing offline model and engines…');
                 const result = await window.go.main.App.UninstallWhisper();
                 if (result && result.startsWith('Error:')) {
                     throw new Error(result.substring(6).trim());

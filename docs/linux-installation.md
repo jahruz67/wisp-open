@@ -85,9 +85,9 @@ WIS listens to the shortcut saved in Settings. Its keyboard shortcut does not de
 
 ## Offline Whisper and GPU acceleration
 
-Linux release packages include whisper.cpp v1.9.4 with Vulkan support, using the same engine and GGML model format as the Windows Vulkan version. No model is bundled or downloaded during app installation.
+Linux installs whisper.cpp v1.9.4 with Vulkan support when you select an offline model in Settings. The engine and model are kept together in the user-managed installation, so **Uninstall Offline Transcription** removes both. Neither is bundled or downloaded during app installation.
 
-Linux release builds target glibc 2.35 and newer. They download the prebuilt engine from a pinned GitHub commit and verify its SHA-256 checksum before packaging it. If **Install Offline Whisper** fails with `GLIBC_x.y not found`, the installed engine was built against a newer glibc than your system provides. Install a compatible WIS release package or a compatible manually built engine. Retrying the model download or rebuilding only the app will not fix an incompatible engine.
+Linux release builds target glibc 2.35 and newer. Settings downloads the prebuilt engine from a pinned GitHub commit and verifies its SHA-256 checksum before installing it. If **Install Offline Whisper** fails with `GLIBC_x.y not found`, the engine requires a newer glibc than your system provides. Use a compatible distribution; retrying the model download or rebuilding only the app will not fix an incompatible engine.
 
 In Settings, open **Offline Whisper**, choose a model size, and click **Install Offline Whisper**. The download runs inside Settings with progress and verifies the model's size and SHA-256 checksum. Then select **Local — [model] (offline)** in the Whisper Model dropdown. The engine and model run locally; no transcription API key is needed. Set **AI Refinement** to **None** to keep the entire dictation flow offline.
 
@@ -97,7 +97,7 @@ GPU acceleration requires a compatible Vulkan graphics driver. For Intel/AMD, in
 
 If GPU acceleration is unavailable, inspect `vulkaninfo --summary` (from `vulkan-tools`) and the WIS logs under `~/.wis-free-v3/logs/`. Whisper backend diagnostics in the log show which device was detected; installation success alone does not confirm GPU inference. Report the GPU model, driver, and diagnostic output when troubleshooting.
 
-Release packages install the engine in `/usr/lib/wis-free-v3/whisper-cli`. Source installs use `/usr/local/lib/wis-free-v3/whisper-cli` or `~/.local/lib/wis-free-v3/whisper-cli`. A manually installed `whisper-cli` on `PATH` is also accepted when the bundled engine is absent; its GPU support depends on how it was built. Models remain in `~/.wis-free-v3/whisper/`.
+The engine and its license are installed in `~/.wis-free-v3/whisper/engine/`, and models remain in `~/.wis-free-v3/whisper/`. Uninstall removes that entire offline installation. Engines outside it, including copies from older packages or on `PATH`, are no longer used by WIS; the in-app action does not delete system-owned files.
 
 Upstream reference: [whisper.cpp Vulkan GPU support](https://github.com/ggml-org/whisper.cpp/blob/v1.9.4/README.md#vulkan-gpu-support).
 
@@ -178,7 +178,7 @@ bash scripts/build-linux.sh --install-user
 bash scripts/build-linux.sh --install-systemd
 ```
 
-Both package and source builds run `scripts/download-whisper-linux.sh` to download the prebuilt CPU/Vulkan engine and license from the pinned GitHub archive. They verify the archive's SHA-256 checksum and install the same engine without recompiling Whisper or its shader compiler. CMake, glslc, and Vulkan development headers are no longer required for normal Linux app builds. No model is downloaded by the build scripts.
+Package and source builds do not bundle the engine. Settings downloads the prebuilt CPU/Vulkan engine and license from the pinned GitHub archive when installing an offline model. CMake, glslc, and Vulkan development headers are not required for normal Linux app builds. No model is downloaded by the build scripts.
 
 The service setup prefers a distribution-provided user unit. If none exists, it creates a WIS-specific user unit without overwriting distribution files.
 

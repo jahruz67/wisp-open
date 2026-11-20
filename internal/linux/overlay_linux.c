@@ -23,6 +23,8 @@ static void rounded_rect(cairo_t *cr, double x, double y, double w, double h, do
 }
 
 void wis_linux_overlay_paint(cairo_t *cr) {
+    cairo_save(cr);
+    cairo_scale(cr, WIS_OVERLAY_WIDTH / 120.0, WIS_OVERLAY_HEIGHT / 46.0);
     cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
     cairo_set_source_rgba(cr, 0, 0, 0, 0);
     cairo_paint(cr);
@@ -52,6 +54,7 @@ void wis_linux_overlay_paint(cairo_t *cr) {
         cairo_move_to(cr, 4, (46 - height) / 2.0);
         pango_cairo_show_layout(cr, text);
         g_object_unref(text);
+        cairo_restore(cr);
         return;
     }
 
@@ -70,6 +73,7 @@ void wis_linux_overlay_paint(cairo_t *cr) {
         rounded_rect(cr, start + i * (4 + gap), (46 - height) / 2, 4, height, 2);
         cairo_fill(cr);
     }
+    cairo_restore(cr);
 }
 
 static gboolean draw_overlay(GtkWidget *widget, cairo_t *cr, gpointer unused) {

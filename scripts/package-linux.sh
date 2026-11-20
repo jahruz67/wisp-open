@@ -100,9 +100,6 @@ run_with_retry() {
 require_command go
 require_command pkg-config
 require_command gcc
-require_command curl
-require_command unzip
-require_command sha256sum
 if [ "$BUILD_DEB" = true ]; then
     require_command dpkg-deb
     require_command readelf
@@ -226,8 +223,6 @@ fi
 
 pkill -f "$EXECUTABLE" 2>/dev/null || true
 
-bash scripts/download-whisper-linux.sh
-
 echo "[3/5] Preparing package payload..."
 rm -rf "$WORK_DIR"
 mkdir -p "$WORK_DIR/root/usr/bin"
@@ -241,8 +236,6 @@ mkdir -p "$WORK_DIR/root/usr/lib/udev/rules.d"
 mkdir -p "$DIST_DIR"
 
 install -m 0755 "$EXECUTABLE" "$WORK_DIR/root/usr/bin/$APP_NAME"
-install -D -m 0755 "$BUILD_DIR/whisper-cli" "$WORK_DIR/root/usr/lib/$APP_NAME/whisper-cli"
-install -m 0644 "$BUILD_DIR/whisper-LICENSE" "$WORK_DIR/root/usr/share/doc/$APP_NAME/whisper-LICENSE"
 install -m 0644 "build/linux/$APP_NAME-ydotool.service" "$WORK_DIR/root/usr/lib/systemd/user/$APP_NAME-ydotool.service"
 install -m 0644 "build/linux/80-$APP_NAME-uinput.rules" "$WORK_DIR/root/usr/lib/udev/rules.d/80-$APP_NAME-uinput.rules"
 
@@ -297,9 +290,8 @@ rm -rf "$DEB_ROOT"
 mkdir -p "$DEB_ROOT/DEBIAN"
 cp -a "$WORK_DIR/root/." "$DEB_ROOT/"
 
-# Include the engine's requirement too, especially for packages built locally
-# on newer distributions. Reject incompatible systems at package installation.
-GLIBC_VERSION="$(readelf --version-info "$DEB_ROOT/usr/bin/$APP_NAME" "$DEB_ROOT/usr/lib/$APP_NAME/whisper-cli" \
+# Whisper is installed per-user from Settings, independently of the app package.
+GLIBC_VERSION="$(readelf --version-info "$DEB_ROOT/usr/bin/$APP_NAME" \
     | sed -n 's/.*Name: GLIBC_\([0-9][0-9.]*\).*/\1/p' | sort -V | tail -n1)"
 if [ -z "$GLIBC_VERSION" ]; then
     echo "[ERROR] Could not determine the package's glibc requirement." >&2
@@ -372,6 +364,7 @@ License:        $LICENSE
 Requires:       ydotool
 Requires:       /usr/bin/pactl
 Requires:       /usr/bin/Xwayland
+Requires:       libvulkan.so.1()(64bit)
 Provides:       application() application($APP_NAME.desktop)
 
 %description
@@ -408,13 +401,10 @@ fi
 
 %files
 %attr(0755,root,root) /usr/bin/$APP_NAME
-%dir /usr/lib/$APP_NAME
-%attr(0755,root,root) /usr/lib/$APP_NAME/whisper-cli
 /usr/share/applications/$APP_NAME.desktop
 /usr/share/pixmaps/$APP_NAME.png
 /usr/share/metainfo/$APP_NAME.metainfo.xml
 /usr/share/doc/$APP_NAME/README.md
-/usr/share/doc/$APP_NAME/whisper-LICENSE
 /usr/share/doc/$APP_NAME/docs/linux-installation.md
 /usr/lib/systemd/user/$APP_NAME-ydotool.service
 /usr/lib/udev/rules.d/80-$APP_NAME-uinput.rules

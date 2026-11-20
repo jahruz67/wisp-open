@@ -294,7 +294,7 @@ if [ "$XDG_CURRENT_DESKTOP" = "GNOME" ] || [ "$XDG_CURRENT_DESKTOP" = "ubuntu:GN
     fi
 fi
 
-DEPS=("gcc" "pkg-config" "git" "c++" "curl" "unzip" "sha256sum")
+DEPS=("gcc" "pkg-config" "git" "c++")
 
 for dep in "${DEPS[@]}"; do
     if ! command_exists $dep; then
@@ -476,8 +476,6 @@ fi
 # doesn't block the terminal while we ask about installation.
 pkill -f "$EXECUTABLE" 2>/dev/null || true
 
-bash scripts/download-whisper-linux.sh
-
 echo "[3/4] Build successful!"
 echo "      Output: $EXECUTABLE"
 echo ""
@@ -524,8 +522,6 @@ if [ "$INSTALL_MODE" = "system" ]; then
     # Needs sudo
     sudo cp "$EXECUTABLE" "/usr/local/bin/$APP_NAME"
     sudo chmod +x "/usr/local/bin/$APP_NAME"
-    sudo install -D -m 0755 "$BUILD_DIR/whisper-cli" "/usr/local/lib/$APP_NAME/whisper-cli"
-    sudo install -D -m 0644 "$BUILD_DIR/whisper-LICENSE" "/usr/local/share/doc/$APP_NAME/whisper-LICENSE"
 
     # Create Desktop shortcut
     DESKTOP_FILE="/usr/share/applications/$APP_NAME.desktop"
@@ -557,8 +553,6 @@ elif [ "$INSTALL_MODE" = "user" ]; then
 
     cp "$EXECUTABLE" "$LOCAL_BIN_DIR/$APP_NAME"
     chmod +x "$LOCAL_BIN_DIR/$APP_NAME"
-    install -D -m 0755 "$BUILD_DIR/whisper-cli" "$HOME/.local/lib/$APP_NAME/whisper-cli"
-    install -D -m 0644 "$BUILD_DIR/whisper-LICENSE" "$HOME/.local/share/doc/$APP_NAME/whisper-LICENSE"
 
     # Add to PATH warning
     case ":${PATH}:" in
