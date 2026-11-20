@@ -1,0 +1,5 @@
+# Wails embeds the application's manifest. Keep the CRT end file without
+# MinGW's default-manifest.o, which would add a conflicting second manifest.
+*endfile:
+crtend.o%s
+

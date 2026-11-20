@@ -145,7 +145,7 @@ jobs:
         shell: pwsh
         run: |
           $appVersion = (Get-Content -LiteralPath scripts/VERSION -Raw).Trim()
-          wails build -platform windows/amd64 -clean -skipbindings -ldflags "-linkmode external -X main.AppVersion=$appVersion"
+          wails build -platform windows/amd64 -clean -skipbindings -ldflags "-linkmode external -extldflags=-specs=build/windows/wails.specs -X main.AppVersion=$appVersion"
 
       - name: Upload Windows executable
         uses: actions/upload-artifact@v4

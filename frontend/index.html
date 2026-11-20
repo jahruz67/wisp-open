@@ -258,6 +258,7 @@
 
                 <!-- Whisper Status -->
                 <div id="whisperSection">
+                    <p id="whisperInstallStatus" class="hint" role="status" aria-live="polite"></p>
                     <div id="whisperNotInstalled">
                         <p class="hint" style="margin-bottom: 14px;">
                             Install offline transcription for use without internet. Uses GPU acceleration if available.
@@ -284,9 +285,9 @@
                             </div>
                         </div>
                         <p class="hint" style="margin-bottom: 14px;">
-                            Select "Local — Whisper" in the Whisper Model dropdown above to use offline transcription.
+                            Select the local model in the Whisper Model dropdown above to use offline transcription. Set AI Model to None for fully offline dictation.
                         </p>
-                        <button onclick="uninstallWhisper()" class="btn-danger">
+                        <button onclick="uninstallWhisper()" id="uninstallWhisperBtn" class="btn-danger">
                             Uninstall Offline Whisper
                         </button>
                     </div>
@@ -802,6 +803,14 @@
         }
 
         // Check whisper installation status
+        function renderWhisperInstallState(installing, label = 'Installing…') {
+            const btn = document.getElementById('installBtn');
+            btn.disabled = installing;
+            btn.textContent = installing ? label : 'Install Offline Whisper';
+            document.getElementById('whisperModelSelect').disabled = installing;
+            document.getElementById('uninstallWhisperBtn').disabled = installing;
+        }
+
         async function checkWhisperStatus() {
             try {
                 const info = await window.go.main.App.GetWhisperInfo();
@@ -809,8 +818,7 @@
                 const selectedModel = whisperSelect.value || configuredWhisperModel;
 
                 // Remove any existing local option
-                const existingLocal = whisperSelect.querySelector('option[value^="local-"]');
-                if (existingLocal) existingLocal.remove();
+                whisperSelect.querySelectorAll('option[value^="local-"]').forEach(option => option.remove());
 
                 if (info.installed) {
                     document.getElementById('whisperNotInstalled').style.display = 'none';
@@ -830,6 +838,20 @@
                     document.getElementById('whisperNotInstalled').style.display = 'block';
                     document.getElementById('whisperInstalled').style.display = 'none';
                 }
+                if (selectedModel.startsWith('local-') && whisperSelect.value !== selectedModel) {
+                    const unavailable = document.createElement('option');
+                    unavailable.value = selectedModel;
+                    unavailable.textContent = 'Local — ' + selectedModel.substring(6) + ' (not installed)';
+                    unavailable.disabled = true;
+                    whisperSelect.appendChild(unavailable);
+                    whisperSelect.value = selectedModel;
+                }
+                const btn = document.getElementById('installBtn');
+                const label = btn.disabled ? btn.textContent : 'Installing…';
+                renderWhisperInstallState(!!info.installing, label);
+                document.getElementById('whisperInstallStatus').textContent = info.installing
+                    ? label
+                    : (info.error || '');
             } catch (err) {
                 console.error('Whisper status check failed:', err);
             }
@@ -838,32 +860,23 @@
         // Install whisper
         window.installWhisper = async function () {
             const model = document.getElementById('whisperModelSelect').value;
-            const btn = document.getElementById('installBtn');
-
-            btn.disabled = true;
-            btn.textContent = (platformOS === 'darwin' || platformOS === 'linux')
-                ? 'Downloading 0%'
-                : 'Starting installation...';
+            renderWhisperInstallState(true, 'Checking engine…');
+            document.getElementById('whisperInstallStatus').textContent = 'Checking engine…';
 
             try {
                 const result = await window.go.main.App.InstallWhisper(model);
 				if (result && result.startsWith('Error:')) {
 					throw new Error(result.substring(6).trim());
 				}
-				if (platformOS === 'darwin' || platformOS === 'linux') {
-					// Progress or completion events may arrive before this call returns.
-					return;
-				}
-				alert(result + '\n\nA terminal window will open showing the installation progress. This may take several minutes depending on your internet speed.');
-
-                // Check status after a delay
-                setTimeout(checkWhisperStatus, 5000);
+                // Completion or error events reset the button on every platform.
+                // Events may arrive before this call returns.
+                return;
             } catch (err) {
+                document.getElementById('whisperInstallStatus').textContent = String(err);
                 alert('Installation failed: ' + err);
             }
 
-            btn.disabled = false;
-            btn.textContent = 'Install Offline Whisper';
+            renderWhisperInstallState(false);
         };
 
         // Uninstall whisper
@@ -873,11 +886,16 @@
             }
 
             try {
+                renderWhisperInstallState(true, 'Removing offline model…');
                 const result = await window.go.main.App.UninstallWhisper();
+                if (result && result.startsWith('Error:')) {
+                    throw new Error(result.substring(6).trim());
+                }
                 alert(result);
-                checkWhisperStatus();
             } catch (err) {
                 alert('Uninstall failed: ' + err);
+            } finally {
+                await checkWhisperStatus();
             }
         };
 
@@ -919,29 +937,22 @@
                 });
 
 				window.runtime.EventsOn('whisper:install-progress', function (progress) {
-					const btn = document.getElementById('installBtn');
-					if (!btn) return;
 					const percent = Math.max(0, Math.min(100, Math.round(progress.percent || 0)));
-					btn.disabled = true;
-					btn.textContent = 'Downloading ' + percent + '%';
+                    const phase = progress.phase || 'Downloading model';
+                    const label = progress.total > 0 ? phase + ' ' + percent + '%' : phase + '…';
+                    renderWhisperInstallState(true, label);
+                    document.getElementById('whisperInstallStatus').textContent = label;
 				});
 
 				window.runtime.EventsOn('whisper:install-complete', async function () {
-					const btn = document.getElementById('installBtn');
-					if (btn) {
-						btn.disabled = false;
-						btn.textContent = 'Install Offline Whisper';
-					}
+					renderWhisperInstallState(false);
 					await checkWhisperStatus();
 					showSaveStatus('Offline model installed');
 				});
 
 				window.runtime.EventsOn('whisper:install-error', function (message) {
-					const btn = document.getElementById('installBtn');
-					if (btn) {
-						btn.disabled = false;
-						btn.textContent = 'Install Offline Whisper';
-					}
+					renderWhisperInstallState(false);
+                    document.getElementById('whisperInstallStatus').textContent = message;
 					alert('Installation failed: ' + message);
 				});
             }
@@ -949,6 +960,7 @@
             await checkWhisperStatus();
             await checkConnection();
             window.addEventListener('focus', refreshMacStatus);
+            window.addEventListener('focus', checkWhisperStatus);
         }
 
         initialize();

@@ -834,29 +834,35 @@ func (a *App) IsWhisperInstalled() bool {
 // GetWhisperInfo returns information about installed whisper.
 // Reuses the cached whisperManager if available.
 func (a *App) GetWhisperInfo() map[string]interface{} {
+	status := map[string]interface{}{
+		"installed":  false,
+		"installing": atomic.LoadInt32(&a.whisperInstalling) != 0,
+	}
 	mgr := a.whisperManager
 	if mgr == nil {
 		var err error
 		mgr, err = whisper.NewManager()
 		if err != nil {
-			return map[string]interface{}{"installed": false}
+			status["error"] = err.Error()
+			return status
 		}
-	}
-
-	if !mgr.IsInstalled() {
-		return map[string]interface{}{"installed": false}
 	}
 
 	info, err := mgr.GetInstalledInfo()
 	if err != nil {
-		return map[string]interface{}{"installed": false}
+		if !os.IsNotExist(err) {
+			status["error"] = "Cannot read offline installation info. Reinstall the offline model."
+		}
+		return status
 	}
-
-	return map[string]interface{}{
-		"installed": true,
-		"model":     info.Model,
-		"version":   info.Version,
+	if err := mgr.ValidateInstallation(); err != nil {
+		status["error"] = err.Error()
+		return status
 	}
+	status["installed"] = true
+	status["model"] = info.Model
+	status["version"] = info.Version
+	return status
 }
 
 // InstallWhisper starts the whisper installation process
@@ -866,46 +872,40 @@ func (a *App) InstallWhisper(model string) string {
 		return fmt.Sprintf("Error: %v", err)
 	}
 
-	if runtime.GOOS == "darwin" || runtime.GOOS == "linux" {
-		if !atomic.CompareAndSwapInt32(&a.whisperInstalling, 0, 1) {
-			return "Error: another local model download is already in progress"
-		}
+	if !atomic.CompareAndSwapInt32(&a.whisperInstalling, 0, 1) {
+		return "Error: another local model download is already in progress"
+	}
+	go func() {
+		progress := make(chan whisper.DownloadProgress, 8)
+		progressDone := make(chan struct{})
 		go func() {
-			defer atomic.StoreInt32(&a.whisperInstalling, 0)
-			progress := make(chan whisper.DownloadProgress, 8)
-			progressDone := make(chan struct{})
-			go func() {
-				defer close(progressDone)
-				for update := range progress {
-					if a.ctx != nil {
-						wailsruntime.EventsEmit(a.ctx, "whisper:install-progress", map[string]interface{}{
-							"model":      model,
-							"downloaded": update.Downloaded,
-							"total":      update.Total,
-							"percent":    update.Percent,
-						})
-					}
-				}
-			}()
-			err := mgr.InstallWithProgress(model, progress)
-			close(progress)
-			<-progressDone
-			if a.ctx != nil {
-				if err != nil {
-					wailsruntime.EventsEmit(a.ctx, "whisper:install-error", err.Error())
-				} else {
-					wailsruntime.EventsEmit(a.ctx, "whisper:install-complete", map[string]string{"model": model})
+			defer close(progressDone)
+			for update := range progress {
+				if a.ctx != nil {
+					wailsruntime.EventsEmit(a.ctx, "whisper:install-progress", map[string]interface{}{
+						"model":      model,
+						"phase":      update.Phase,
+						"downloaded": update.Downloaded,
+						"total":      update.Total,
+						"percent":    update.Percent,
+					})
 				}
 			}
 		}()
-		return "Installation started"
-	}
+		err := mgr.InstallWithProgress(model, progress)
+		close(progress)
+		<-progressDone
+		atomic.StoreInt32(&a.whisperInstalling, 0)
+		if a.ctx != nil {
+			if err != nil {
+				wailsruntime.EventsEmit(a.ctx, "whisper:install-error", err.Error())
+			} else {
+				wailsruntime.EventsEmit(a.ctx, "whisper:install-complete", map[string]string{"model": model})
+			}
+		}
+	}()
 
-	if err := mgr.Install(model); err != nil {
-		return fmt.Sprintf("Error: %v", err)
-	}
-
-	return "Installation started - check the terminal window"
+	return "Installation started"
 }
 
 // UninstallWhisper removes the whisper installation

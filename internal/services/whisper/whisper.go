@@ -21,8 +21,7 @@ import (
 
 // Download URLs
 const (
-	// Whisper.cpp Windows binary from ggml-org GitHub releases
-	// Using Vulkan build to support Intel iGPU, AMD, and Nvidia
+	// Windows x64 Vulkan engine and backend DLLs from a pinned release.
 	whisperBinaryURL = "https://github.com/jerryshell/whisper.cpp-windows-vulkan-bin/releases/download/v1.0.0/whisper.cpp-windows-vulkan.zip"
 	// Model files are pinned to an immutable Hugging Face revision so the
 	// expected byte sizes and SHA-256 digests below remain reproducible.
@@ -68,33 +67,34 @@ func NewManager() (*Manager, error) {
 	}, nil
 }
 
-// IsInstalled checks if whisper is installed
+// IsInstalled checks the engine and the complete model, not just metadata.
 func (m *Manager) IsInstalled() bool {
-	infoPath := filepath.Join(m.installDir, "installed.json")
-	if _, err := os.Stat(infoPath); os.IsNotExist(err) {
-		return false
-	}
+	return m.ValidateInstallation() == nil
+}
 
-	// Check if model exists
+// ValidateInstallation explains why an installation cannot be used.
+func (m *Manager) ValidateInstallation() error {
 	info, err := m.GetInstalledInfo()
 	if err != nil {
-		return false
+		return fmt.Errorf("cannot read Whisper installation info: %w", err)
 	}
 
 	modelInfo, ok := Models[info.Model]
 	if !ok || modelInfo.Filename == "" {
-		return false
+		return fmt.Errorf("unknown installed Whisper model: %s", info.Model)
 	}
 
 	modelPath := filepath.Join(m.installDir, modelInfo.Filename)
-	if stat, err := os.Stat(modelPath); err != nil || !stat.Mode().IsRegular() || stat.Size() == 0 {
-		return false
+	if stat, err := os.Stat(modelPath); err != nil {
+		return fmt.Errorf("Whisper model is missing: %w", err)
+	} else if !stat.Mode().IsRegular() || stat.Size() != modelInfo.Bytes {
+		return fmt.Errorf("Whisper %s model is incomplete; reinstall the offline model", info.Model)
 	}
-	if stat, err := os.Stat(m.getBinaryPath()); err != nil || !stat.Mode().IsRegular() || (runtime.GOOS != "windows" && stat.Mode().Perm()&0111 == 0) {
-		return false
+	if err := validateEngineFile(m.getBinaryPath()); err != nil {
+		return err
 	}
 
-	return true
+	return nil
 }
 
 // GetInstalledInfo returns information about the installed whisper
@@ -113,9 +113,7 @@ func (m *Manager) GetInstalledInfo() (*InstalledInfo, error) {
 	return &info, nil
 }
 
-// Install downloads and installs Whisper with the specified model. Windows
-// opens its existing terminal installer; Linux and macOS report progress through the
-// channel accepted by InstallWithProgress.
+// Install downloads and verifies Whisper, waiting for installation to finish.
 func (m *Manager) Install(model string) error {
 	return m.InstallWithProgress(model, nil)
 }
@@ -133,48 +131,91 @@ func (m *Manager) InstallWithProgress(model string, progress chan<- DownloadProg
 		return fmt.Errorf("failed to create install directory: %w", err)
 	}
 
-	if runtime.GOOS == "darwin" || runtime.GOOS == "linux" {
-		return m.installLocalModel(model, progress)
-	}
-
-	// Create install script (Windows batch file)
-	scriptPath := filepath.Join(m.installDir, "install.bat")
-	script := m.generateInstallScript(model)
-	if err := os.WriteFile(scriptPath, []byte(script), 0755); err != nil {
-		return fmt.Errorf("failed to write install script: %w", err)
-	}
-
-	// Run install script in a visible terminal
-	cmd := exec.Command("cmd", "/c", "start", "cmd", "/k", scriptPath)
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start installer: %w", err)
-	}
-
-	logger.Info("Whisper installation started in terminal")
-	return nil
-}
-
-func (m *Manager) installLocalModel(model string, progress chan<- DownloadProgress) error {
 	if runtime.GOOS == "darwin" && runtime.GOARCH != "arm64" {
 		return fmt.Errorf("local Whisper is supported only on Apple Silicon")
 	}
-	if stat, err := os.Stat(m.getBinaryPath()); err != nil {
-		return fmt.Errorf("Whisper engine is missing; reinstall WIS with its offline engine: %w", err)
-	} else if !stat.Mode().IsRegular() || stat.Mode().Perm()&0111 == 0 {
-		return fmt.Errorf("Whisper engine is not executable: %s", m.getBinaryPath())
+	reportInstallPhase(progress, "Checking engine")
+	if runtime.GOOS == "windows" {
+		if runtime.GOARCH != "amd64" {
+			return fmt.Errorf("the Windows offline engine requires the x64 version of WIS")
+		}
+		if err := m.installWindowsEngine(progress); err != nil {
+			return err
+		}
+	} else if runtime.GOOS == "darwin" || runtime.GOOS == "linux" {
+		if err := checkEngine(m.getBinaryPath()); err != nil {
+			return err
+		}
+	} else {
+		return fmt.Errorf("offline Whisper is not supported on %s", runtime.GOOS)
 	}
+	return m.installLocalModel(model, progress)
+}
 
+func (m *Manager) installLocalModel(model string, progress chan<- DownloadProgress) error {
 	modelInfo := Models[model]
 	modelURL := fmt.Sprintf("%s/%s", modelBaseURL, modelInfo.Filename)
-	tempPath := filepath.Join(m.installDir, modelInfo.Filename+".download")
+	tempFile, err := os.CreateTemp(m.installDir, ".model-*.download")
+	if err != nil {
+		return fmt.Errorf("failed to create model download: %w", err)
+	}
+	tempPath := tempFile.Name()
+	defer os.Remove(tempPath)
+	if err := tempFile.Close(); err != nil {
+		return err
+	}
 	finalPath := filepath.Join(m.installDir, modelInfo.Filename)
-	_ = os.Remove(tempPath)
-	if err := downloadFile(modelURL, tempPath, progress); err != nil {
-		_ = os.Remove(tempPath)
+	if err := downloadFile(modelURL, tempPath, "Downloading model", progress); err != nil {
 		return fmt.Errorf("failed to download %s model: %w", model, err)
 	}
+	reportInstallPhase(progress, "Verifying model")
+	if err := verifyModel(model, tempPath); err != nil {
+		return err
+	}
+	if err := os.Rename(tempPath, finalPath); err != nil {
+		return fmt.Errorf("failed to activate downloaded model: %w", err)
+	}
+
+	reportInstallPhase(progress, "Finishing installation")
+	old, _ := m.GetInstalledInfo()
+	version := "bundled-arm64"
+	if runtime.GOOS == "linux" {
+		version = "linux-whisper.cpp"
+	} else if runtime.GOOS == "windows" {
+		version = "windows-vulkan"
+	}
+	info := InstalledInfo{Version: version, Model: model, InstallPath: m.installDir}
+	data, err := json.MarshalIndent(info, "", "    ")
+	if err != nil {
+		return err
+	}
+	infoPath := filepath.Join(m.installDir, "installed.json")
+	defer os.Remove(infoPath + ".tmp")
+	if err := os.WriteFile(infoPath+".tmp", data, 0600); err != nil {
+		return fmt.Errorf("failed to save installation info: %w", err)
+	}
+	if err := os.Rename(infoPath+".tmp", infoPath); err != nil {
+		return fmt.Errorf("failed to activate installation info: %w", err)
+	}
+	if err := m.ValidateInstallation(); err != nil {
+		return err
+	}
+	// Keep the previous model usable until its metadata is replaced too.
+	if old != nil && old.Model != model {
+		if oldInfo, ok := Models[old.Model]; ok {
+			_ = os.Remove(filepath.Join(m.installDir, oldInfo.Filename))
+		}
+	}
+	logger.Info("Local Whisper %s model installed", model)
+	return nil
+}
+
+func verifyModel(model, tempPath string) error {
+	modelInfo, ok := Models[model]
+	if !ok {
+		return fmt.Errorf("unknown model: %s", model)
+	}
 	if stat, err := os.Stat(tempPath); err != nil || stat.Size() != modelInfo.Bytes {
-		_ = os.Remove(tempPath)
 		if err != nil {
 			return fmt.Errorf("failed to inspect downloaded model: %w", err)
 		}
@@ -189,167 +230,16 @@ func (m *Manager) installLocalModel(model string, progress chan<- DownloadProgre
 	_, copyErr := io.Copy(hash, file)
 	closeErr := file.Close()
 	if copyErr != nil {
-		_ = os.Remove(tempPath)
 		return fmt.Errorf("failed to verify model: %w", copyErr)
 	}
 	if closeErr != nil {
-		_ = os.Remove(tempPath)
 		return closeErr
 	}
 	actualHash := fmt.Sprintf("%x", hash.Sum(nil))
 	if !strings.EqualFold(actualHash, modelInfo.SHA256) {
-		_ = os.Remove(tempPath)
 		return fmt.Errorf("model checksum mismatch: got %s", actualHash)
 	}
-	if err := os.Rename(tempPath, finalPath); err != nil {
-		_ = os.Remove(tempPath)
-		return fmt.Errorf("failed to activate downloaded model: %w", err)
-	}
-
-	old, _ := m.GetInstalledInfo()
-	version := "bundled-arm64"
-	if runtime.GOOS == "linux" {
-		version = "linux-whisper.cpp"
-	}
-	info := InstalledInfo{Version: version, Model: model, InstallPath: m.installDir}
-	data, err := json.MarshalIndent(info, "", "    ")
-	if err != nil {
-		return err
-	}
-	infoPath := filepath.Join(m.installDir, "installed.json")
-	if err := os.WriteFile(infoPath+".tmp", data, 0600); err != nil {
-		return err
-	}
-	if err := os.Rename(infoPath+".tmp", infoPath); err != nil {
-		return err
-	}
-	// Keep the previous installation usable until its metadata is replaced too.
-	if old != nil && old.Model != model {
-		if oldInfo, ok := Models[old.Model]; ok {
-			_ = os.Remove(filepath.Join(m.installDir, oldInfo.Filename))
-		}
-	}
-	logger.Info("Local Whisper %s model installed", model)
 	return nil
-}
-
-// generateInstallScript creates a batch script for installation
-func (m *Manager) generateInstallScript(model string) string {
-	modelInfo := Models[model]
-	modelURL := fmt.Sprintf("%s/%s", modelBaseURL, modelInfo.Filename)
-	modelPath := filepath.Join(m.installDir, modelInfo.Filename)
-	infoPath := filepath.Join(m.installDir, "installed.json")
-	zipPath := filepath.Join(m.installDir, "whisper.zip")
-
-	script := fmt.Sprintf(`@echo off
-title wis-free-v3 - Installing Offline Whisper
-color 0A
-echo.
-echo ===============================================
-echo    wis-free-v3 - Offline Whisper Installer
-echo ===============================================
-echo.
-echo Install directory: %s
-echo Model: %s (%s)
-echo.
-
-echo Checking prerequisites...
-if not exist "C:\Windows\System32\msvcp140.dll" (
-    echo.
-    echo ERROR: Microsoft Visual C++ Redistributable is missing.
-    echo This is required for the offline model to run.
-    echo.
-    echo Please download and install it from:
-    echo https://aka.ms/vs/17/release/vc_redist.x64.exe
-    echo.
-    echo After installing, restart wis-free-v3 and try again.
-    echo.
-    pause
-    exit /b 1
-)
-
-echo.
-echo [1/4] Creating directories...
-mkdir "%s" 2>nul
-
-echo.
-echo [2/4] Downloading whisper.cpp binary...
-echo URL: %s
-curl -L --retry 3 --progress-bar -o "%s" "%s"
-if %%ERRORLEVEL%% neq 0 (
-    echo.
-    echo ERROR: Failed to download whisper.cpp
-    pause
-    exit /b 1
-)
-
-echo.
-echo [3/4] Extracting whisper.cpp...
-powershell -Command "Expand-Archive -Path '%s' -DestinationPath '%s' -Force"
-if %%ERRORLEVEL%% neq 0 (
-    echo ERROR: Failed to extract whisper.cpp
-    pause
-    exit /b 1
-)
-del "%s"
-
-echo.
-echo [4/4] Downloading Whisper %s model (%s)...
-echo URL: %s
-echo.
-echo This may take several minutes depending on your internet speed...
-echo.
-curl -L --retry 3 --progress-bar -o "%s" "%s"
-if %%ERRORLEVEL%% neq 0 (
-    echo.
-    echo ERROR: Failed to download model
-    pause
-    exit /b 1
-)
-
-echo.
-echo Verifying installation...
-if not exist "%s" (
-    echo ERROR: Model file not found
-    pause
-    exit /b 1
-)
-
-echo.
-echo Creating installation info...
-echo {"version":"1.8.2","model":"%s","install_path":"%s"} > "%s"
-
-echo.
-echo ===============================================
-echo    Installation Complete!
-echo ===============================================
-echo.
-echo Whisper.cpp and %s model installed successfully!
-echo.
-echo NEXT STEPS:
-echo 1. Close this window
-echo 2. Restart wis-free-v3
-echo 3. Select "Local Whisper" in settings
-echo.
-pause
-exit
-`,
-		m.installDir,
-		model, modelInfo.Size,
-		m.installDir,
-		whisperBinaryURL,
-		zipPath, whisperBinaryURL,
-		zipPath, m.installDir,
-		zipPath,
-		model, modelInfo.Size,
-		modelURL,
-		modelPath, modelURL,
-		modelPath,
-		model, strings.ReplaceAll(m.installDir, `\`, `\\`), infoPath,
-		model,
-	)
-
-	return script
 }
 
 // Uninstall removes whisper installation
@@ -363,8 +253,8 @@ func (m *Manager) Uninstall() error {
 
 // Transcribe runs local whisper transcription
 func (m *Manager) Transcribe(audioPath string, language string) (string, error) {
-	if !m.IsInstalled() {
-		return "", fmt.Errorf("whisper is not installed")
+	if err := m.ValidateInstallation(); err != nil {
+		return "", err
 	}
 
 	info, err := m.GetInstalledInfo()
@@ -375,11 +265,7 @@ func (m *Manager) Transcribe(audioPath string, language string) (string, error) 
 	binaryPath := m.getBinaryPath()
 	modelFilename := Models[info.Model].Filename
 
-	// Check for model in Release directory first, then main directory
-	modelPath := filepath.Join(m.installDir, "Release", modelFilename)
-	if _, err := os.Stat(modelPath); os.IsNotExist(err) {
-		modelPath = filepath.Join(m.installDir, modelFilename)
-	}
+	modelPath := filepath.Join(m.installDir, modelFilename)
 
 	if language == "" {
 		language = "auto"
@@ -387,85 +273,36 @@ func (m *Manager) Transcribe(audioPath string, language string) (string, error) 
 
 	logger.Info("Running whisper: %s -m %s -l %s -f %s", binaryPath, modelPath, language, audioPath)
 
-	// Run whisper with simple arguments: ./main -m model.bin -l language -f audio.wav
-	// Vulkan build uses GPU by default, no need for -ngl
-	// Use a 5-minute timeout to prevent infinite hangs on long audio or stuck processes
+	// GPU acceleration is the default; retry once on CPU if a GPU backend fails.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, binaryPath, "-m", modelPath, "-l", language, "-f", audioPath)
+	args := []string{"-m", modelPath, "-l", language, "-f", audioPath, "-np", "-nt"}
+	output, diagnostics, err := runWhisper(ctx, binaryPath, args)
+	if err != nil && ctx.Err() == nil {
+		logger.Info("Whisper failed with GPU enabled; retrying once with CPU: %s", diagnostics)
+		output, diagnostics, err = runWhisper(ctx, binaryPath, append(args, "-ng"))
+	}
 
-	// Set working directory to the binary's location so it can find DLLs
+	if err != nil {
+		if ctx.Err() != nil {
+			return "", fmt.Errorf("local transcription did not finish: %w", ctx.Err())
+		}
+		logger.Error("Whisper failed: %v, diagnostics: %s", err, diagnostics)
+		return "", fmt.Errorf("transcription failed: %w: %s", err, diagnostics)
+	}
+	logger.Debug("Whisper backend diagnostics: %s", diagnostics)
+	// -np/-nt produce only dictated text; do not filter out real spoken words.
+	return strings.Join(strings.Fields(string(output)), " "), nil
+}
+
+func runWhisper(ctx context.Context, binaryPath string, args []string) ([]byte, string, error) {
+	cmd := exec.CommandContext(ctx, binaryPath, args...)
 	cmd.Dir = filepath.Dir(binaryPath)
-
-	// Hide the console window on Windows
 	hideWindowContext(cmd)
-
-	// GPU/backend diagnostics go to stderr and must never become dictated text.
 	var diagnostics bytes.Buffer
 	cmd.Stderr = &diagnostics
 	output, err := cmd.Output()
-	outputStr := string(output)
-
-	if err != nil {
-		logger.Error("Whisper failed: %v, output: %s, diagnostics: %s", err, outputStr, diagnostics.String())
-		return "", fmt.Errorf("transcription failed: %w: %s", err, strings.TrimSpace(diagnostics.String()))
-	}
-	if runtime.GOOS == "linux" {
-		logger.Debug("Whisper backend diagnostics: %s", strings.TrimSpace(diagnostics.String()))
-	}
-
-	// Parse the output - whisper.cpp outputs transcribed text to stdout
-	lines := strings.Split(outputStr, "\n")
-	var textLines []string
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-
-		// Skip empty lines
-		if line == "" {
-			continue
-		}
-
-		// Skip all system/debug info
-		if strings.Contains(line, "whisper_") ||
-			strings.Contains(line, "main:") ||
-			strings.Contains(line, "system_info:") ||
-			strings.Contains(line, "ld_") ||
-			strings.Contains(line, "cuda_") ||
-			strings.Contains(line, "ggml_vulkan") {
-			continue
-		}
-
-		// Handle timestamped lines like: [00:00:00.000 --> 00:00:07.280] Text
-		if strings.HasPrefix(line, "[") && strings.Contains(line, "]") {
-			// Extract text after the timestamp
-			parts := strings.SplitN(line, "]", 2)
-			if len(parts) > 1 {
-				text := strings.TrimSpace(parts[1])
-				if text != "" {
-					textLines = append(textLines, text)
-				}
-			}
-			continue
-		}
-
-		// Fallback for non-prefixed text lines (if any)
-		textLines = append(textLines, line)
-	}
-
-	result := strings.Join(textLines, " ")
-	result = strings.TrimSpace(result)
-
-	if result == "" {
-		// If still no text, return simple fallback or raw output if short
-		if len(outputStr) < 200 {
-			return strings.TrimSpace(outputStr), nil
-		}
-		// Return empty string rather than spamming user with massive logs
-		return "", nil
-	}
-
-	return result, nil
+	return output, strings.TrimSpace(diagnostics.String()), err
 }
 
 // getBinaryPath returns the path to the whisper binary
@@ -475,6 +312,9 @@ func (m *Manager) getBinaryPath() string {
 	}
 	if runtime.GOOS == "linux" {
 		return m.linuxBinaryPath()
+	}
+	if binary := findWindowsBinary(filepath.Join(m.installDir, "engine")); binary != "" {
+		return binary
 	}
 	// whisper.cpp extracts to a Release subdirectory
 	releaseDir := filepath.Join(m.installDir, "Release")
@@ -591,14 +431,30 @@ func CheckOnline() bool {
 
 // DownloadProgress represents download progress
 type DownloadProgress struct {
+	Phase      string
 	Downloaded int64
 	Total      int64
 	Percent    float64
 }
 
 // downloadFile downloads a file with progress reporting
-func downloadFile(url, dest string, progress chan<- DownloadProgress) error {
-	resp, err := http.Get(url)
+func downloadFile(url, dest, phase string, progress chan<- DownloadProgress) (err error) {
+	reportInstallPhase(progress, phase)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	// Limit idle time rather than total duration so slow, active downloads work.
+	idle := time.AfterFunc(time.Minute, cancel)
+	defer idle.Stop()
+	defer func() {
+		if err != nil && ctx.Err() != nil {
+			err = fmt.Errorf("download stalled for one minute: %w", err)
+		}
+	}()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -612,7 +468,11 @@ func downloadFile(url, dest string, progress chan<- DownloadProgress) error {
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer func() {
+		if closeErr := out.Close(); err == nil {
+			err = closeErr
+		}
+	}()
 
 	total := resp.ContentLength
 	var downloaded int64
@@ -622,15 +482,21 @@ func downloadFile(url, dest string, progress chan<- DownloadProgress) error {
 	for {
 		n, err := resp.Body.Read(buf)
 		if n > 0 {
+			idle.Reset(time.Minute)
 			if _, werr := out.Write(buf[:n]); werr != nil {
 				return werr
 			}
 			downloaded += int64(n)
-			if progress != nil && total > 0 && (lastProgress.IsZero() || time.Since(lastProgress) >= 250*time.Millisecond || downloaded == total) {
+			if progress != nil && (lastProgress.IsZero() || time.Since(lastProgress) >= 250*time.Millisecond || downloaded == total) {
+				percent := float64(0)
+				if total > 0 {
+					percent = float64(downloaded) / float64(total) * 100
+				}
 				progress <- DownloadProgress{
+					Phase:      phase,
 					Downloaded: downloaded,
 					Total:      total,
-					Percent:    float64(downloaded) / float64(total) * 100,
+					Percent:    percent,
 				}
 				lastProgress = time.Now()
 			}
@@ -644,4 +510,10 @@ func downloadFile(url, dest string, progress chan<- DownloadProgress) error {
 	}
 
 	return nil
+}
+
+func reportInstallPhase(progress chan<- DownloadProgress, phase string) {
+	if progress != nil {
+		progress <- DownloadProgress{Phase: phase}
+	}
 }
