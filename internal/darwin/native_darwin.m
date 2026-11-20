@@ -11,6 +11,7 @@
 #include <stdbool.h>
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 
 static void WISRunOnMain(dispatch_block_t block) {
     if ([NSThread isMainThread]) {

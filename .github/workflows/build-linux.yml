@@ -187,19 +187,6 @@ jobs:
         run: npm ci
         working-directory: frontend
 
-      - name: Build pinned Apple Silicon Whisper engine
-        run: |
-          git clone --depth 1 --branch v1.9.4 https://github.com/ggml-org/whisper.cpp.git build/whisper-src
-          test "$(git -C build/whisper-src rev-parse HEAD)" = 927cfce34f31707e17f2bff35c349632fb9e2c3a
-          cmake -S build/whisper-src -B build/whisper-macos \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 \
-            -DBUILD_SHARED_LIBS=OFF \
-            -DWHISPER_BUILD_TESTS=OFF \
-            -DWHISPER_BUILD_SERVER=OFF \
-            -DWHISPER_BUILD_EXAMPLES=ON
-          cmake --build build/whisper-macos --config Release --target whisper-cli --parallel
-
       - name: Build and package macOS preview
         run: bash scripts/build-macos.sh
 

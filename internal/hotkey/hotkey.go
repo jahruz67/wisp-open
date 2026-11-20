@@ -112,9 +112,9 @@ func (l *Listener) Start() {
 	}
 
 	if modOnly {
-		// Modifier-only Windows shortcuts use key-state polling. Linux is
+		// Modifier-only Windows/macOS shortcuts use key-state polling. Linux is
 		// handled by the direct input poll above.
-		if runtime.GOOS != "windows" {
+		if runtime.GOOS != "windows" && runtime.GOOS != "darwin" {
 			logger.Error("Modifier-only shortcuts like %q are not supported on %s", l.shortcut, runtime.GOOS)
 			l.mu.Unlock()
 			return

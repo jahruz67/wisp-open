@@ -17,9 +17,21 @@ DIST_DIR="dist/macos"
 STAGE_DIR="build/package-macos"
 DMG_PATH="$DIST_DIR/wis-free-v3_${APP_VERSION}_macos-arm64-preview.dmg"
 
-if [[ ! -x "$ENGINE_SOURCE" ]]; then
+if [[ -z "${WIS_WHISPER_CLI:-}" ]]; then
+    bash scripts/build-whisper-macos.sh
+elif [[ ! -x "$ENGINE_SOURCE" ]]; then
     echo "Missing Apple Silicon whisper-cli at $ENGINE_SOURCE" >&2
-    echo "Build the pinned whisper.cpp engine first or set WIS_WHISPER_CLI." >&2
+    exit 1
+fi
+
+if ! lipo -verify_arch arm64 "$ENGINE_SOURCE"; then
+    echo "Whisper engine must contain an arm64 executable." >&2
+    exit 1
+fi
+unexpected_deps=$(otool -L "$ENGINE_SOURCE" \
+    | tail -n +2 | awk '{print $1}' | grep -Ev '^(/System/Library/|/usr/lib/)' || true)
+if [[ -n "$unexpected_deps" ]]; then
+    echo "Whisper engine has unbundled dependencies: $unexpected_deps" >&2
     exit 1
 fi
 
@@ -29,6 +41,10 @@ wails build -platform darwin/arm64 -clean -skipbindings -ldflags "-X main.AppVer
 
 mkdir -p "$(dirname "$ENGINE_DEST")" "$DIST_DIR"
 install -m 0755 "$ENGINE_SOURCE" "$ENGINE_DEST"
+if [[ -f "$(dirname "$ENGINE_SOURCE")/../whisper-LICENSE" ]]; then
+    install -m 0644 "$(dirname "$ENGINE_SOURCE")/../whisper-LICENSE" \
+        "$APP_BUNDLE/Contents/Resources/whisper-LICENSE"
+fi
 
 # Ad-hoc signing keeps the preview internally consistent on Apple Silicon. It
 # is intentionally not presented as Developer ID signing or notarization.

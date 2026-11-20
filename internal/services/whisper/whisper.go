@@ -87,10 +87,10 @@ func (m *Manager) IsInstalled() bool {
 	}
 
 	modelPath := filepath.Join(m.installDir, modelInfo.Filename)
-	if _, err := os.Stat(modelPath); os.IsNotExist(err) {
+	if stat, err := os.Stat(modelPath); err != nil || !stat.Mode().IsRegular() || stat.Size() == 0 {
 		return false
 	}
-	if _, err := os.Stat(m.getBinaryPath()); err != nil {
+	if stat, err := os.Stat(m.getBinaryPath()); err != nil || !stat.Mode().IsRegular() || (runtime.GOOS != "windows" && stat.Mode().Perm()&0111 == 0) {
 		return false
 	}
 
@@ -206,12 +206,7 @@ func (m *Manager) installLocalModel(model string, progress chan<- DownloadProgre
 		return fmt.Errorf("failed to activate downloaded model: %w", err)
 	}
 
-	// Remove the previously selected model only after the replacement is valid.
-	if old, err := m.GetInstalledInfo(); err == nil && old.Model != model {
-		if oldInfo, ok := Models[old.Model]; ok {
-			_ = os.Remove(filepath.Join(m.installDir, oldInfo.Filename))
-		}
-	}
+	old, _ := m.GetInstalledInfo()
 	version := "bundled-arm64"
 	if runtime.GOOS == "linux" {
 		version = "linux-whisper.cpp"
@@ -227,6 +222,12 @@ func (m *Manager) installLocalModel(model string, progress chan<- DownloadProgre
 	}
 	if err := os.Rename(infoPath+".tmp", infoPath); err != nil {
 		return err
+	}
+	// Keep the previous installation usable until its metadata is replaced too.
+	if old != nil && old.Model != model {
+		if oldInfo, ok := Models[old.Model]; ok {
+			_ = os.Remove(filepath.Join(m.installDir, oldInfo.Filename))
+		}
 	}
 	logger.Info("Local Whisper %s model installed", model)
 	return nil
@@ -470,7 +471,7 @@ func (m *Manager) Transcribe(audioPath string, language string) (string, error) 
 // getBinaryPath returns the path to the whisper binary
 func (m *Manager) getBinaryPath() string {
 	if runtime.GOOS == "darwin" {
-		return m.bundledDarwinBinary()
+		return m.darwinBinaryPath()
 	}
 	if runtime.GOOS == "linux" {
 		return m.linuxBinaryPath()
@@ -541,14 +542,33 @@ func (m *Manager) linuxBinaryPath() string {
 	return "/usr/lib/wis-free-v3/whisper-cli"
 }
 
-func (m *Manager) bundledDarwinBinary() string {
+func (m *Manager) darwinBinaryPath() string {
 	executable, err := os.Executable()
 	if err != nil {
 		return ""
 	}
+	if resolved, err := filepath.EvalSymlinks(executable); err == nil {
+		executable = resolved
+	}
 	// Wails places the executable in App.app/Contents/MacOS and resources in
-	// App.app/Contents/Resources. This path also keeps development failures clear.
-	return filepath.Clean(filepath.Join(filepath.Dir(executable), "..", "Resources", "bin", "whisper-cli"))
+	// App.app/Contents/Resources. Prefer the bundled engine in release builds.
+	binDir := filepath.Dir(executable)
+	bundled := filepath.Clean(filepath.Join(binDir, "..", "Resources", "bin", "whisper-cli"))
+	if filepath.Base(binDir) == "MacOS" && filepath.Base(filepath.Dir(binDir)) == "Contents" {
+		return bundled
+	}
+	// Wails development mode runs outside the bundle, from the project root.
+	for _, candidate := range []string{
+		filepath.Join(binDir, "whisper-cli"),
+		filepath.Join("build", "whisper-macos", "bin", "whisper-cli"),
+	} {
+		if stat, err := os.Stat(candidate); err == nil && stat.Mode().IsRegular() && stat.Mode().Perm()&0111 != 0 {
+			if absolute, err := filepath.Abs(candidate); err == nil {
+				return absolute
+			}
+		}
+	}
+	return bundled
 }
 
 // CheckOnline checks if internet is available

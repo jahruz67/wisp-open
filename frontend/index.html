@@ -667,7 +667,9 @@
         }
 
         window.saveWhisperModel = async function () {
-            await window.go.main.App.SaveSettings({ whisper_model: document.getElementById('whisperModel').value });
+            const model = document.getElementById('whisperModel').value;
+            await window.go.main.App.SaveSettings({ whisper_model: model });
+            configuredWhisperModel = model;
             showSaveStatus();
         };
 
@@ -767,6 +769,7 @@
             try {
                 const isOnline = await window.go.main.App.CheckOnline();
                 const statusEl = document.getElementById('connectionStatus');
+                const hasLocalModel = document.getElementById('whisperModel').querySelector('option[value^="local-"]') !== null;
 
                 if (isOnline) {
                     statusEl.innerHTML = '● Online';
@@ -774,7 +777,9 @@
                     statusEl.style.color = 'var(--green)';
                     statusEl.style.border = '1px solid rgba(61, 186, 110, 0.2)';
                 } else {
-                    statusEl.innerHTML = '● Offline \u2014 install local Whisper for transcription';
+                    statusEl.textContent = hasLocalModel
+                        ? '● Offline \u2014 local Whisper available'
+                        : '● Offline \u2014 install local Whisper for transcription';
                     statusEl.style.background = 'var(--red-dim)';
                     statusEl.style.color = 'var(--red)';
                     statusEl.style.border = '1px solid rgba(224, 82, 82, 0.2)';
@@ -801,6 +806,7 @@
             try {
                 const info = await window.go.main.App.GetWhisperInfo();
                 const whisperSelect = document.getElementById('whisperModel');
+                const selectedModel = whisperSelect.value || configuredWhisperModel;
 
                 // Remove any existing local option
                 const existingLocal = whisperSelect.querySelector('option[value^="local-"]');
@@ -817,7 +823,7 @@
                     localOption.textContent = '↑ Local \u2014 ' + info.model + ' (offline)';
                     localOption.style.fontWeight = 'bold';
                     whisperSelect.insertBefore(localOption, whisperSelect.firstChild);
-					if (configuredWhisperModel === localOption.value) {
+					if (selectedModel === localOption.value) {
 						whisperSelect.value = localOption.value;
 					}
                 } else {
@@ -835,7 +841,9 @@
             const btn = document.getElementById('installBtn');
 
             btn.disabled = true;
-            btn.textContent = 'Starting installation...';
+            btn.textContent = (platformOS === 'darwin' || platformOS === 'linux')
+                ? 'Downloading 0%'
+                : 'Starting installation...';
 
             try {
                 const result = await window.go.main.App.InstallWhisper(model);
@@ -843,8 +851,7 @@
 					throw new Error(result.substring(6).trim());
 				}
 				if (platformOS === 'darwin' || platformOS === 'linux') {
-					btn.textContent = 'Downloading 0%';
-					showSaveStatus('Model download started');
+					// Progress or completion events may arrive before this call returns.
 					return;
 				}
 				alert(result + '\n\nA terminal window will open showing the installation progress. This may take several minutes depending on your internet speed.');
@@ -888,8 +895,6 @@
 
             await loadSettings();
             await loadMics();
-            await checkConnection();
-            await checkWhisperStatus();
 
             if (window.runtime && typeof window.runtime.EventsOn === 'function') {
                 window.runtime.EventsOn('history:updated', function () {
@@ -941,6 +946,8 @@
 				});
             }
 
+            await checkWhisperStatus();
+            await checkConnection();
             window.addEventListener('focus', refreshMacStatus);
         }
 

@@ -586,8 +586,8 @@ func (a *App) SaveSettings(settings map[string]interface{}) string {
 			logger.Error("Invalid shortcut: %s (rejected)", val)
 			return "Invalid shortcut - use a key with optional modifiers, or at least two modifiers (e.g. ctrl+shift+z or ctrl+super)"
 		}
-		if modOnly && runtime.GOOS != "windows" && runtime.GOOS != "linux" {
-			return "Modifier-only shortcuts are supported on Windows and Linux"
+		if modOnly && runtime.GOOS != "windows" && runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
+			return "Modifier-only shortcuts are supported on Windows, Linux, and macOS"
 		}
 
 		a.config.Shortcut = val
@@ -910,6 +910,11 @@ func (a *App) InstallWhisper(model string) string {
 
 // UninstallWhisper removes the whisper installation
 func (a *App) UninstallWhisper() string {
+	if !atomic.CompareAndSwapInt32(&a.whisperInstalling, 0, 1) {
+		return "Error: another local model operation is already in progress"
+	}
+	defer atomic.StoreInt32(&a.whisperInstalling, 0)
+
 	mgr, err := whisper.NewManager()
 	if err != nil {
 		return fmt.Sprintf("Error: %v", err)
