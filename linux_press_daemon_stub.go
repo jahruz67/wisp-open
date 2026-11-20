@@ -12,6 +12,8 @@ import "wis-free-v3/internal/globalshortcuts"
 
 func (a *App) startLinuxPressDaemon() {}
 
+func (a *App) startLinuxShortcutListener() {}
+
 func (a *App) stopLinuxPressDaemon() {}
 
 func (a *App) GetLinuxShortcutStatus() globalshortcuts.Status { return globalshortcuts.Status{} }
