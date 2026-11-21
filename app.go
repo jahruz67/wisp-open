@@ -44,6 +44,8 @@ type App struct {
 	tempDir           string
 	transcribing      int32 // atomic: 1 = transcription in progress, prevents concurrent
 	whisperInstalling int32 // atomic: 1 = local model download in progress
+	apiKeyStatusMu    sync.Mutex
+	apiKeyStatuses    map[string]cachedAPIKeyStatus
 }
 
 // NewApp creates a new App application struct
@@ -415,7 +417,9 @@ func (a *App) processRecordingFile(recordingPath string) {
 	// Check if using a local transcription model.
 	isLocal := strings.HasPrefix(a.config.WhisperModel, "local-")
 
-	if isLocal {
+	if a.config.WhisperModel == "" {
+		err = fmt.Errorf("no transcription model is available; add a valid API key or install an offline model in Settings")
+	} else if isLocal {
 		// The local manager selects whisper.cpp or sherpa-onnx for the installed model.
 		if a.whisperManager == nil {
 			var mgrErr error
@@ -578,13 +582,13 @@ func (a *App) SaveSettings(settings map[string]interface{}) string {
 		// GetSettings masks the key as "****abcd" so the frontend can show the last 4 chars.
 		// If the user didn't change it and sent back the masked value, preserve the real key.
 		if !strings.HasPrefix(val, "****") {
-			a.config.GroqAPIKey = val
+			a.config.GroqAPIKey = strings.TrimSpace(val)
 		}
 	}
 	if val, ok := settings["mistral_api_key"].(string); ok {
 		// Only update the API key if it's not the masked value returned by GetSettings.
 		if !strings.HasPrefix(val, "****") {
-			a.config.MistralAPIKey = val
+			a.config.MistralAPIKey = strings.TrimSpace(val)
 		}
 	}
 	if val, ok := settings["shortcut"].(string); ok {

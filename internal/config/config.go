@@ -59,8 +59,8 @@ func DefaultConfig() *Config {
 		MistralAPIKey:        "",
 		Shortcut:             DefaultShortcut,
 		LinuxShortcutEnabled: true,
-		WhisperModel:         DefaultWhisperModel,
-		AIModel:              DefaultAIModel,
+		WhisperModel:         "",
+		AIModel:              "",
 		AIPrompt:             DefaultAIPrompt,
 		Language:             DefaultLanguage,
 		MicrophoneDevice:     nil,
@@ -160,12 +160,6 @@ func GetConfigPath() (string, error) {
 func (c *Config) applyDefaults() {
 	if c.Shortcut == "" {
 		c.Shortcut = DefaultShortcut
-	}
-	if c.WhisperModel == "" {
-		c.WhisperModel = DefaultWhisperModel
-	}
-	if c.AIModel == "" {
-		c.AIModel = DefaultAIModel
 	}
 	if c.AIPrompt == "" {
 		c.AIPrompt = DefaultAIPrompt

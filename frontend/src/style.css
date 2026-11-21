@@ -515,7 +515,8 @@ a {
     margin-left: 8px;
 }
 
-.api-keys-details[open] > .api-keys-summary::after {
+.api-keys-details[open] > .api-keys-summary::after,
+.api-key-section[open] > .api-keys-summary::after {
     transform: rotate(45deg);
 }
 
@@ -531,6 +532,10 @@ a {
 
 .api-key-section {
     margin-bottom: 12px;
+}
+
+.api-key-section > .api-keys-summary {
+    padding: 8px 0;
 }
 
 .api-key-section:last-child {

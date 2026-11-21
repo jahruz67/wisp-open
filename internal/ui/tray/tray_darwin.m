@@ -9,7 +9,6 @@ extern void goWISTrayToggleStartup(void);
 extern void goWISTrayQuit(void);
 
 static NSStatusItem *wisStatusItem;
-static NSMenuItem *wisStatusMenuItem;
 static NSMenuItem *wisStartupMenuItem;
 static NSString *wisTrayLabel;
 
@@ -48,10 +47,6 @@ void wis_tray_start(const char *label, const char *shortcut, bool startup, const
         wisStatusItem.button.toolTip = [NSString stringWithFormat:@"%@ — %@ to record", labelValue, shortcutValue];
 
         NSMenu *menu = [NSMenu new];
-        wisStatusMenuItem = [[NSMenuItem alloc] initWithTitle:@"Status: Ready" action:nil keyEquivalent:@""];
-        wisStatusMenuItem.enabled = NO;
-        [menu addItem:wisStatusMenuItem];
-        [menu addItem:NSMenuItem.separatorItem];
 
         NSMenuItem *settings = [[NSMenuItem alloc] initWithTitle:@"Settings" action:@selector(openSettings:) keyEquivalent:@""];
         settings.target = wisTrayTarget;
@@ -71,7 +66,6 @@ void wis_tray_start(const char *label, const char *shortcut, bool startup, const
 void wis_tray_set_status(const char *status) {
     NSString *statusValue = [NSString stringWithUTF8String:status ?: "Ready"];
     WISTrayOnMain(^{
-        wisStatusMenuItem.title = [@"Status: " stringByAppendingString:statusValue];
         wisStatusItem.button.toolTip = [NSString stringWithFormat:@"%@ — %@", wisTrayLabel ?: @"wis-free-v3", statusValue];
     });
 }

@@ -24,7 +24,6 @@ type App interface {
 var trayLabel = "wis-free-v3"
 
 // Menu item references for dynamic updates
-var statusMenuItem *systray.MenuItem
 var startupMenuItem *systray.MenuItem
 
 // onStartupChanged is called when the tray startup menu item is toggled.
@@ -51,11 +50,6 @@ func onReady(app App) {
 	systray.SetTooltip(trayLabel + " - " + lastStatus)
 
 	// Build menu structure
-	statusMenuItem = systray.AddMenuItem("Status: "+lastStatus, "Current application status")
-	statusMenuItem.Disable()
-
-	systray.AddSeparator()
-
 	menuSettings := systray.AddMenuItem("Settings", "Open settings window")
 	menuStartup := systray.AddMenuItemCheckbox(
 		"Start with system",
@@ -158,13 +152,12 @@ func buildTooltip(app App) string {
 	return trayLabel + " - " + shortcut + " to record"
 }
 
-// UpdateStatus updates the status text displayed in the tray menu.
+// UpdateStatus updates the current status and tray icon tooltip.
 func UpdateStatus(status string) {
 	statusMu.Lock()
 	defer statusMu.Unlock()
 	lastStatus = status
-	if statusMenuItem != nil {
-		statusMenuItem.SetTitle("Status: " + status)
+	if startupMenuItem != nil {
 		systray.SetTooltip(trayLabel + " - " + status)
 	}
 }

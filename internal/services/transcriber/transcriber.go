@@ -53,13 +53,10 @@ type Client struct {
 }
 
 // NewClient creates a new transcriber client with the specified configuration.
-// Empty values for models or prompt will use sensible defaults.
+// An empty model means none is available; an empty prompt uses the default.
 func NewClient(groqAPIKey, mistralAPIKey, whisperModel, aiModel, aiPrompt string) *Client {
-	if whisperModel == "" {
-		whisperModel = DefaultWhisperModel
-	}
 	if aiModel == "" {
-		aiModel = DefaultAIModel
+		aiModel = "None"
 	}
 	if aiPrompt == "" {
 		aiPrompt = DefaultAIPrompt
@@ -101,6 +98,9 @@ func (c *Client) GetAPIKeyForModel(model string) string {
 // TranscribeAudio converts an audio file to text using Whisper.
 // Returns the transcribed text or an error if the operation fails.
 func (c *Client) TranscribeAudio(audioFilePath, language string) (string, error) {
+	if c.whisperModel == "" {
+		return "", fmt.Errorf("no transcription model is available; add a valid API key or install an offline model in Settings")
+	}
 	// Check if using local whisper
 	isLocal := strings.HasPrefix(c.whisperModel, "local-")
 	if isLocal {

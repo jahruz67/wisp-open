@@ -114,8 +114,8 @@
                     
                     <div class="api-keys-content">
                         <!-- Groq API Key -->
-                        <div class="api-key-section">
-                            <label style="margin-top: 12px; margin-bottom: 8px; display: block;">Groq API Key</label>
+                        <details class="api-key-section">
+                            <summary class="api-keys-summary">Groq API Key</summary>
                             <div class="form-control">
                                 <div class="flex-row">
                                     <div class="input-wrapper">
@@ -126,11 +126,11 @@
                                 </div>
                             </div>
                             <p class="hint">Get your free key at <a href="#" onclick="window.runtime.BrowserOpenURL('https://console.groq.com/keys'); return false;" style="color: var(--accent);">console.groq.com/keys</a></p>
-                        </div>
+                        </details>
 
                         <!-- Mistral API Key -->
-                        <div class="api-key-section">
-                            <label style="margin-top: 12px; margin-bottom: 8px; display: block;">Mistral API Key</label>
+                        <details class="api-key-section">
+                            <summary class="api-keys-summary">Mistral API Key</summary>
                             <div class="form-control">
                                 <div class="flex-row">
                                     <div class="input-wrapper">
@@ -141,7 +141,7 @@
                                 </div>
                             </div>
                             <p class="hint">Get your key at <a href="#" onclick="window.runtime.BrowserOpenURL('https://console.mistral.ai/api-keys'); return false;" style="color: var(--accent);">console.mistral.ai/api-keys</a></p>
-                        </div>
+                        </details>
                     </div>
                 </details>
             </div>
@@ -185,11 +185,15 @@
             <!-- Whisper Model -->
             <div class="section">
                 <label>Transcription Model</label>
-                <select id="whisperModel" onchange="saveWhisperModel()" class="form-control">
-                    <option value="whisper-large-v3-turbo">Whisper Large v3 Turbo (Groq)</option>
-                    <option value="whisper-large-v3">Whisper Large v3 (Groq)</option>
-                    <option value="voxtral-mini-latest">Voxtral Mini Transcribe V2 (Mistral)</option>
+                <select id="whisperModel" onchange="saveWhisperModel()" class="form-control" disabled>
+                    <option value="">Checking available models…</option>
                 </select>
+                <template id="whisperModelOptions">
+                    <option value="whisper-large-v3-turbo" data-provider="groq">Whisper Large v3 Turbo (Groq)</option>
+                    <option value="whisper-large-v3" data-provider="groq">Whisper Large v3 (Groq)</option>
+                    <option value="voxtral-mini-latest" data-provider="mistral">Voxtral Mini Transcribe V2 (Mistral)</option>
+                </template>
+                <p id="modelAvailabilityStatus" class="hint" role="status" aria-live="polite"></p>
             </div>
 
             <!-- Language -->
@@ -208,17 +212,19 @@
             <!-- AI Model -->
             <div class="section">
                 <label>AI Model</label>
-                <select id="aiModel" onchange="saveAiModel()" class="form-control">
-                    <option value="None">None — skip refinement</option>
-                    <option value="openai/gpt-oss-120b-high">GPT OSS 120B High (Groq)</option>
-                    <option value="openai/gpt-oss-120b">GPT OSS 120B (Groq)</option>
-                    <option value="openai/gpt-oss-20b-high">GPT OSS 20B High (Groq)</option>
-                    <option value="openai/gpt-oss-20b">GPT OSS 20B (Groq)</option>
-                    <option value="llama-3.3-70b-versatile">Llama 3.3 70B Versatile (Groq)</option>
-                    <option value="llama-3.1-8b-instant">Llama 3.1 8B Instant (Groq)</option>
-                    <option value="mistral-small-latest">Mistral Small (Mistral)</option>
-                    <option value="mistral-medium-latest">Mistral Medium (Mistral)</option>
+                <select id="aiModel" onchange="saveAiModel()" class="form-control" disabled>
+                    <option value="">Checking available models…</option>
                 </select>
+                <template id="aiModelOptions">
+                    <option value="openai/gpt-oss-120b-high" data-provider="groq">GPT OSS 120B High (Groq)</option>
+                    <option value="openai/gpt-oss-120b" data-provider="groq">GPT OSS 120B (Groq)</option>
+                    <option value="openai/gpt-oss-20b-high" data-provider="groq">GPT OSS 20B High (Groq)</option>
+                    <option value="openai/gpt-oss-20b" data-provider="groq">GPT OSS 20B (Groq)</option>
+                    <option value="llama-3.3-70b-versatile" data-provider="groq">Llama 3.3 70B Versatile (Groq)</option>
+                    <option value="llama-3.1-8b-instant" data-provider="groq">Llama 3.1 8B Instant (Groq)</option>
+                    <option value="mistral-small-latest" data-provider="mistral">Mistral Small (Mistral)</option>
+                    <option value="mistral-medium-latest" data-provider="mistral">Mistral Medium (Mistral)</option>
+                </template>
             </div>
 
             <!-- AI Prompt -->
@@ -288,7 +294,7 @@
                             </div>
                         </div>
                         <p class="hint" style="margin-bottom: 14px;">
-                            Select the local model in the Transcription Model dropdown above to use offline transcription. Set AI Model to None for fully offline dictation.
+                            The local model is selected automatically when no cloud model is available. Set AI Model to None for fully offline dictation; refinement is skipped automatically when no AI models are available.
                         </p>
                         <button onclick="uninstallWhisper()" id="uninstallWhisperBtn" class="btn-danger">
                             Uninstall Offline Transcription
@@ -304,7 +310,25 @@
         let groqApiKeyVisible = false;
         let mistralApiKeyVisible = false;
         let platformOS = '';
-        let configuredWhisperModel = 'whisper-large-v3-turbo';
+        let modelUpdateQueue = Promise.resolve();
+
+        // Serialize saves and refreshes so older checks cannot undo a new choice.
+        function queueModelUpdate(action) {
+            modelUpdateQueue = modelUpdateQueue.then(action).catch(err => {
+                console.error('Model update failed:', err);
+                document.getElementById('modelAvailabilityStatus').textContent = String(err);
+                showSaveStatus('Could not update models');
+                return false;
+            });
+            return modelUpdateQueue;
+        }
+
+        async function saveModelSettings(settings) {
+            const result = await window.go.main.App.SaveSettings(settings);
+            if (result !== 'Settings saved successfully') {
+                throw new Error(result || 'Could not save settings');
+            }
+        }
 
         function setIcon(element, name) {
             const use = element.querySelector('use');
@@ -336,29 +360,35 @@
         // Save Groq API key
         window.saveGroqApiKey = async function () {
             const key = document.getElementById('groqApiKey').value.trim();
-            await window.go.main.App.SaveSettings({ groq_api_key: key });
-            showSaveStatus();
-            updateApiKeyStatus();
+            return saveApiKey('groq', key);
         };
 
         // Save Mistral API key
         window.saveMistralApiKey = async function () {
             const key = document.getElementById('mistralApiKey').value.trim();
-            await window.go.main.App.SaveSettings({ mistral_api_key: key });
-            showSaveStatus();
-            updateApiKeyStatus();
+            return saveApiKey('mistral', key);
         };
 
-        // Update API key status display
-        function updateApiKeyStatus() {
-            const groqKey = document.getElementById('groqApiKey').value;
-            const mistralKey = document.getElementById('mistralApiKey').value;
-            
-            const groqStatus = document.getElementById('groqKeyStatus');
-            const mistralStatus = document.getElementById('mistralKeyStatus');
-            
-            groqStatus.textContent = groqKey ? (groqKey.length > 4 ? 'Groq key set' : 'Groq key') : 'No Groq key';
-            mistralStatus.textContent = mistralKey ? (mistralKey.length > 4 ? 'Mistral key set' : 'Mistral key') : 'No Mistral key';
+        function saveApiKey(provider, key) {
+            return queueModelUpdate(async () => {
+                await saveModelSettings({ [provider + '_api_key']: key });
+                document.getElementById(provider + 'KeyStatus').textContent = 'Checking key…';
+                await refreshModelChoices();
+                showSaveStatus();
+            });
+        }
+
+        function updateApiKeyStatus(statuses) {
+            for (const [provider, name] of [['groq', 'Groq'], ['mistral', 'Mistral']]) {
+                const status = statuses[provider];
+                const labels = {
+                    missing: 'No ' + name + ' key',
+                    valid: name + ' key valid',
+                    invalid: name + ' key invalid',
+                    unavailable: name + (status.valid ? ' key verified; check unavailable' : ' key could not be verified')
+                };
+                document.getElementById(provider + 'KeyStatus').textContent = labels[status.state];
+            }
         }
 
         // Record shortcut
@@ -652,9 +682,6 @@
                         settings.linux_ydotool_status?.ready && settings.linux_shortcut_status?.ready, resetSetup);
                 }
                 renderMacStatus(settings.platform_status, resetSetup);
-                configuredWhisperModel = settings.whisper_model || 'whisper-large-v3-turbo';
-                document.getElementById('whisperModel').value = configuredWhisperModel;
-                document.getElementById('aiModel').value = settings.ai_model || 'llama-3.3-70b-versatile';
                 document.getElementById('aiPrompt').value = settings.ai_prompt || '';
                 document.getElementById('language').value = settings.language || 'en';
                 document.getElementById('startupToggle').checked = settings.startup || false;
@@ -663,7 +690,7 @@
                 document.getElementById('appVersion').textContent = ver === 'dev' ? 'dev' : ('v' + ver);
 
                 renderHistoryList(settings.history || []);
-                updateApiKeyStatus();
+                await checkWhisperStatus();
             } catch (err) {
                 console.error("Failed to load settings:", err);
             }
@@ -696,15 +723,23 @@
 
         window.saveWhisperModel = async function () {
             const model = document.getElementById('whisperModel').value;
-            await window.go.main.App.SaveSettings({ whisper_model: model });
-            configuredWhisperModel = model;
-            showSaveStatus();
+            return saveSelectedModel('whisper_model', model);
         };
 
         window.saveAiModel = async function () {
-            await window.go.main.App.SaveSettings({ ai_model: document.getElementById('aiModel').value });
-            showSaveStatus();
+            return saveSelectedModel('ai_model', document.getElementById('aiModel').value);
         };
+
+        function saveSelectedModel(setting, model) {
+            return queueModelUpdate(async () => {
+                try {
+                    await saveModelSettings({ [setting]: model });
+                    showSaveStatus();
+                } finally {
+                    await refreshModelChoices();
+                }
+            });
+        }
 
         window.saveLanguage = async function () {
             await window.go.main.App.SaveSettings({ language: document.getElementById('language').value });
@@ -811,18 +846,6 @@
                     statusEl.style.background = 'var(--red-dim)';
                     statusEl.style.color = 'var(--red)';
                     statusEl.style.border = '1px solid rgba(224, 82, 82, 0.2)';
-
-                    // Disable cloud AI options when offline
-                    const aiSelect = document.getElementById('aiModel');
-
-                    for (let opt of aiSelect.options) {
-                        if (opt.value !== 'None' && !opt.value.startsWith('local-')) {
-                            opt.disabled = true;
-                            if (!opt.text.includes('(offline)')) {
-                                opt.text += ' (offline)';
-                            }
-                        }
-                    }
                 }
             } catch (err) {
                 console.error('Connection check failed:', err);
@@ -871,48 +894,83 @@
             document.getElementById('uninstallWhisperBtn').disabled = installing;
         }
 
-        async function checkWhisperStatus() {
-            try {
-                const info = await window.go.main.App.GetWhisperInfo();
-                const whisperSelect = document.getElementById('whisperModel');
-                const selectedModel = whisperSelect.value || configuredWhisperModel;
-                const modelSelect = document.getElementById('whisperModelSelect');
-                if (!modelSelect.dataset.initialized && modelSelect.options.length) {
-                    modelSelect.value = info.installed ? info.model : 'small';
-                    modelSelect.dataset.initialized = 'true';
-                    modelSelect.onchange();
-                }
+        function availableCloudOptions(id, statuses) {
+            return [...document.getElementById(id + 'Options').content.children]
+                .filter(option => statuses[option.dataset.provider]?.valid)
+                .map(option => option.cloneNode(true));
+        }
 
-                // Remove any existing local option
-                whisperSelect.querySelectorAll('option[value^="local-"]').forEach(option => option.remove());
-
-                if (info.installed) {
-                    document.getElementById('whisperInstalled').style.display = 'block';
-                    document.getElementById('installedModel').textContent = info.label || info.model;
-
-                    // Add local option to whisper dropdown
-                    const localOption = document.createElement('option');
-                    localOption.value = 'local-' + info.model;
-                    localOption.textContent = 'Local — ' + (info.label || info.model) + ' · Offline';
-                    localOption.style.fontWeight = 'bold';
-                    whisperSelect.insertBefore(localOption, whisperSelect.firstChild);
-					if (selectedModel === localOption.value) {
-						whisperSelect.value = localOption.value;
-					}
-                } else {
-                    document.getElementById('whisperNotInstalled').style.display = 'block';
-                    document.getElementById('whisperInstalled').style.display = 'none';
-                }
-                const btn = document.getElementById('installBtn');
-                btn.style.display = info.installed ? 'none' : '';
-                const label = btn.disabled ? btn.textContent : 'Installing…';
-                renderWhisperInstallState(!!info.installing, label);
-                document.getElementById('whisperInstallStatus').textContent = info.installing
-                    ? label
-                    : (info.error || '');
-            } catch (err) {
-                console.error('Whisper status check failed:', err);
+        function renderModelPicker(id, options, selected, emptyMessage) {
+            const select = document.getElementById(id);
+            select.replaceChildren(...options);
+            if (!options.length) {
+                select.add(new Option(emptyMessage, ''));
             }
+            select.value = selected;
+        }
+
+        async function refreshModelChoices() {
+            const whisperSelect = document.getElementById('whisperModel');
+            const aiSelect = document.getElementById('aiModel');
+            whisperSelect.disabled = aiSelect.disabled = true;
+            const [settings, statuses, info] = await Promise.all([
+                window.go.main.App.GetSettings(),
+                window.go.main.App.GetAPIKeyStatus(),
+                window.go.main.App.GetWhisperInfo()
+            ]);
+            updateApiKeyStatus(statuses);
+            renderWhisperStatus(info);
+            const transcription = availableCloudOptions('whisperModel', statuses);
+            if (info.installed) {
+                transcription.unshift(new Option('Local — ' + (info.label || info.model) + ' · Offline', 'local-' + info.model));
+            }
+            const refinement = availableCloudOptions('aiModel', statuses);
+            const whisper = transcription.some(option => option.value === settings.whisper_model)
+                ? settings.whisper_model : (transcription[0]?.value || '');
+            const ai = settings.ai_model === 'None' ? 'None'
+                : refinement.some(option => option.value === settings.ai_model) ? settings.ai_model
+                : (refinement.find(option => option.value === 'llama-3.3-70b-versatile')?.value || refinement[0]?.value || '');
+            if (refinement.length || ai === 'None') {
+                refinement.unshift(new Option('None — skip refinement', 'None'));
+            }
+            renderModelPicker('whisperModel', transcription, whisper, 'No models available');
+            renderModelPicker('aiModel', refinement, ai, 'No refinement models available');
+            const changes = {};
+            if (whisper !== settings.whisper_model) changes.whisper_model = whisper;
+            if (ai !== settings.ai_model) changes.ai_model = ai;
+            if (Object.keys(changes).length) await saveModelSettings(changes);
+            whisperSelect.disabled = !transcription.length;
+            aiSelect.disabled = !refinement.some(option => option.value !== 'None');
+            document.getElementById('modelAvailabilityStatus').textContent = whisper
+                ? '' : 'Add a valid API key or install an offline model to enable transcription.';
+            return true;
+        }
+
+        function checkWhisperStatus() {
+            return queueModelUpdate(refreshModelChoices);
+        }
+
+        function renderWhisperStatus(info) {
+            const modelSelect = document.getElementById('whisperModelSelect');
+            if (!modelSelect.dataset.initialized && modelSelect.options.length) {
+                modelSelect.value = info.installed ? info.model : 'small';
+                modelSelect.dataset.initialized = 'true';
+                modelSelect.onchange();
+            }
+            if (info.installed) {
+                document.getElementById('whisperInstalled').style.display = 'block';
+                document.getElementById('installedModel').textContent = info.label || info.model;
+            } else {
+                document.getElementById('whisperNotInstalled').style.display = 'block';
+                document.getElementById('whisperInstalled').style.display = 'none';
+            }
+            const btn = document.getElementById('installBtn');
+            btn.style.display = info.installed ? 'none' : '';
+            const label = btn.disabled ? btn.textContent : 'Installing…';
+            renderWhisperInstallState(!!info.installing, label);
+            document.getElementById('whisperInstallStatus').textContent = info.installing
+                ? label
+                : (info.error || '');
         }
 
         // Install whisper
@@ -1007,22 +1065,9 @@
                     document.getElementById('whisperInstallStatus').textContent = label;
 				});
 
-				window.runtime.EventsOn('whisper:install-complete', async function (info) {
+				window.runtime.EventsOn('whisper:install-complete', async function () {
 					renderWhisperInstallState(false);
-					await checkWhisperStatus();
-                    if (configuredWhisperModel.startsWith('local-')) {
-                        const model = 'local-' + info.model;
-                        try {
-                            const result = await window.go.main.App.SaveSettings({ whisper_model: model });
-                            if (result !== 'Settings saved successfully') {
-                                throw new Error(result || 'Could not save the selected model');
-                            }
-                            configuredWhisperModel = model;
-                            document.getElementById('whisperModel').value = model;
-                        } catch (err) {
-                            document.getElementById('whisperInstallStatus').textContent = 'Model installed. Select it above to activate it: ' + String(err);
-                        }
-                    }
+                    if (!await checkWhisperStatus()) return;
                     await checkConnection();
 					showSaveStatus('Offline model installed');
 				});
