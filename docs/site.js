@@ -64,33 +64,33 @@ function initDictationSimulator() {
   const presets = [
     {
       id: 'flow',
-      label: 'Everyday Flow',
-      target: 'Slack · #product-design',
-      meta: 'Groq Whisper Turbo · 0.8s',
+      label: 'Product Review',
+      target: 'Chat · #product-design',
+      meta: 'Cloud · 0.8s',
       spoken: 'Let’s move the product review to Thursday afternoon and invite the engineering leads too.',
       refined: 'Let’s move the product review to Thursday afternoon and invite the engineering leads too.'
     },
     {
       id: 'code',
-      label: 'Code & Terminal',
-      target: 'VS Code · speech_engine.py',
-      meta: 'Local Parakeet TDT v3 (CPU) · Refined',
+      label: 'Code Snippet',
+      target: 'Editor · speech_engine.py',
+      meta: 'Local CPU · Refined',
       spoken: 'define a function called record and transcribe with timeout equals five seconds and error handling',
       refined: 'def record_and_transcribe(timeout: int = 5) -> str:\n    try:\n        return engine.transcribe(stream_audio(), timeout=timeout)\n    except AudioError as err:\n        logger.warning(f"Audio capture failed: {err}")\n        return ""'
     },
     {
       id: 'notes',
       label: 'Meeting Memo',
-      target: 'Obsidian · Sprint 14 Notes',
-      meta: '100% Offline Whisper (Vulkan GPU)',
-      spoken: 'WIS Free V3 bundles ydotool for native Wayland direct typing with zero clipboard interference',
-      refined: '- **Input stack**: WIS Free V3 integrates `ydotoold` for universal direct typing on Linux Wayland/X11.\n- **Privacy**: Local Whisper and Parakeet models execute entirely on-device without cloud telemetry.'
+      target: 'Notes · Sprint 14',
+      meta: '100% Offline (GPU)',
+      spoken: 'Wisp integrates direct typing with zero clipboard interference and local privacy',
+      refined: '- **Direct typing**: Keystrokes are simulated directly into the active window.\n- **Privacy**: Local models execute entirely on-device without cloud telemetry.'
     },
     {
       id: 'email',
-      label: 'Email Reply',
-      target: 'Thunderbird · Re: Roadmap sync',
-      meta: 'Groq + Llama 3.3 Versatile',
+      label: 'Email Draft',
+      target: 'Mail · Re: Roadmap sync',
+      meta: 'Cloud · Refined',
       spoken: 'thanks for the update looks great to me go ahead and cut the 1.67 release tomorrow morning',
       refined: 'Hi team,\n\nThanks for the update — looks great to me. Let’s proceed with cutting the v1.67 release tomorrow morning.'
     }
@@ -163,7 +163,7 @@ function initDictationSimulator() {
       hudIcon.className = 'hud-mic-indicator transcribing';
       hudIcon.innerHTML = `<img src="./tray_transcribing.png" alt="Transcribing" width="14" height="14">`;
       hudTitle.textContent = 'Transcribing...';
-      hudSub.textContent = data.meta.includes('Local') ? 'Local whisper.cpp' : 'Groq Whisper Turbo';
+      hudSub.textContent = data.meta.includes('Local') || data.meta.includes('Offline') ? 'Local model' : 'Cloud transcription';
       hudTimer.textContent = '0.4s';
 
       // Step 3: STREAM TYPING INTO EDITOR
@@ -171,8 +171,8 @@ function initDictationSimulator() {
         overlay.className = 'hud-overlay is-refined';
         hudIcon.className = 'hud-mic-indicator';
         hudIcon.innerHTML = `<img src="./tray_idle.png" alt="Ready" width="14" height="14" style="opacity: 0.85;">`;
-        hudTitle.textContent = 'Direct Typing';
-        hudSub.textContent = 'Auto-pasting into active app';
+        hudTitle.textContent = 'Direct typing';
+        hudSub.textContent = 'Typing into active window';
 
         let charIndex = 0;
         const textToType = data.refined;
