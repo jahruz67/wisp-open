@@ -1735,28 +1735,53 @@ h2 {
   justify-content: space-between;
   gap: 16px;
   list-style: none;
+  outline: none;
 }
 
 .faq-summary::-webkit-details-marker {
   display: none;
 }
 
+.faq-summary::marker {
+  display: none;
+  content: '';
+}
+
 .faq-icon {
-  width: 20px;
-  height: 20px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--accent);
-  transition: transform 0.25s ease;
+  transition: transform 0.3s ease, border-color 0.2s, background 0.2s;
   flex-shrink: 0;
-  font-size: 13px;
+  line-height: 1;
+}
+
+.faq-icon svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  fill: none;
+  display: block;
+  transition: transform 0.3s ease;
+}
+
+.faq-item:hover .faq-icon {
+  border-color: var(--border-hover);
+  background: var(--surface-top);
 }
 
 .faq-item[open] .faq-icon {
   transform: rotate(45deg);
+  border-color: var(--accent);
+  background: var(--accent-dim);
 }
 
 .faq-content {
