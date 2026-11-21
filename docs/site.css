@@ -1798,7 +1798,16 @@ h2 {
   padding-top: 90px;
   padding-bottom: 110px;
   position: relative;
+  overflow: visible;
+}
+
+.cta-section::before {
+  content: '';
+  position: absolute;
+  inset: 0;
   overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .cta-box {
