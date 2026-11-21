@@ -85,27 +85,62 @@
       </div>
 
       <!-- Hero Interactive App Demonstration -->
-      <div class="hero-demo-wrapper reveal" aria-label="Wisp dictation simulation preview">
+      <div class="hero-demo-wrapper reveal" aria-label="Wisp desktop dictation simulation preview">
         <div class="hero-glow"></div>
         
         <div class="desktop-preview">
-          <div class="window-titlebar">
-            <div class="window-controls">
-              <span class="window-dot"></span>
-              <span class="window-dot"></span>
-              <span class="window-dot"></span>
+          <!-- Desktop Top OS Menu Bar -->
+          <div class="desktop-os-bar">
+            <div class="os-bar-left">
+              <span class="os-logo-mark" aria-hidden="true">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
+              </span>
+              <span class="os-active-app" id="osActiveApp">Notes</span>
+              <span class="os-menu-item">File</span>
+              <span class="os-menu-item">Edit</span>
+              <span class="os-menu-item">Format</span>
             </div>
-            <div class="window-title">
-              <img src="./appicon.png" alt="Wisp icon" width="16" height="16">
-              <span>Wisp — Voice-to-Text</span>
-            </div>
-            <div class="window-status">
-              <i></i> Ready
+            <div class="os-bar-right">
+              <!-- Wisp Live System Tray Badge -->
+              <div class="os-tray-item wisp-tray-badge" id="osWispTray" title="Wisp background service is active">
+                <img src="./tray_idle.png" alt="Wisp Tray" width="13" height="13" id="osTrayIcon">
+                <span>Wisp</span>
+              </div>
+              <span class="os-tray-item os-wifi" aria-hidden="true" title="Connected">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12.55a11 11 0 0 1 14.08 0M1.42 9a16 16 0 0 1 21.16 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/></svg>
+              </span>
+              <span class="os-clock" id="osClock">10:42 PM</span>
             </div>
           </div>
 
+          <!-- Desktop Workspace (Contains the Open App + Floating Wisp HUD) -->
           <div class="desktop-workspace">
-            <!-- Native Floating Pill Overlay (Matches app overlay.go) -->
+            
+            <!-- Focused Application Window on the Desktop -->
+            <div class="desktop-app-window" id="desktopAppWindow">
+              <div class="app-window-titlebar">
+                <div class="window-controls">
+                  <span class="window-dot dot-close"></span>
+                  <span class="window-dot dot-min"></span>
+                  <span class="window-dot dot-max"></span>
+                </div>
+                <div class="app-window-title">
+                  <span class="app-icon" id="appIcon">📝</span>
+                  <span id="appWindowTitle">Notes — Sprint Planning</span>
+                </div>
+                <div class="app-window-status">
+                  <span class="focus-indicator"></span>
+                  <span id="editorMeta">100% Offline (GPU)</span>
+                </div>
+              </div>
+
+              <!-- Dynamic App Body (Notes, Chat, Code, or Email) -->
+              <div class="app-window-content" id="appContent">
+                <!-- Injected dynamically by site.js -->
+              </div>
+            </div>
+
+            <!-- Native Floating Pill Overlay (Positioned at bottom center of desktop, like real Wisp) -->
             <div class="hud-overlay" id="hudOverlay">
               <div class="hud-left">
                 <div class="hud-mic-indicator" id="hudIcon">
@@ -126,38 +161,37 @@
               </div>
 
               <div class="hud-right">
-                <span class="hud-timer" id="hudTimer">00:00</span>
-                <span class="hud-hotkey-pill"><kbd>Ctrl</kbd>+<kbd>Super</kbd></span>
+                <span class="hud-timer" id="hudTimer">0.4s</span>
+                <span class="hud-hotkey-pill" id="hudHotkey"><kbd>Ctrl</kbd>+<kbd>Super</kbd></span>
               </div>
             </div>
+          </div>
 
-            <!-- Focused Application Window (Simulates direct typing) -->
-            <div class="editor-paper">
-              <div class="editor-header">
-                <div class="editor-target-badge">
-                  <span></span>
-                  <strong id="editorTarget">Chat · #product-design</strong>
-                </div>
-                <span class="editor-meta-tag" id="editorMeta">Cloud · 0.8s</span>
-              </div>
-              <div class="editor-content">
-                <span class="typed-text" id="typedText"></span><span class="caret" aria-hidden="true"></span>
-              </div>
+          <!-- Tactile Interactive Dock & Controls -->
+          <div class="demo-dock">
+            <div class="demo-presets">
+              <span class="demo-dock-label">Focused App:</span>
+              <button type="button" class="preset-chip active" data-index="0">📝 Notes</button>
+              <button type="button" class="preset-chip" data-index="1">💬 Chat</button>
+              <button type="button" class="preset-chip" data-index="2">💻 Code</button>
+              <button type="button" class="preset-chip" data-index="3">✉️ Email</button>
             </div>
-
-            <!-- Demo Preset Selector & Actions -->
-            <div class="demo-toolbar">
-              <div class="demo-presets">
-                <button type="button" class="preset-chip active" data-index="0">Product Review</button>
-                <button type="button" class="preset-chip" data-index="1">Code Snippet</button>
-                <button type="button" class="preset-chip" data-index="2">Meeting Memo</button>
-                <button type="button" class="preset-chip" data-index="3">Email Draft</button>
-              </div>
-              <button type="button" class="simulate-btn" id="simulateBtn" aria-label="Replay dictation test">
+            
+            <div class="demo-actions">
+              <button type="button" class="hold-to-speak-btn" id="holdBtn" aria-label="Hold to speak into desktop app">
+                <span class="hold-btn-icon">🎙️</span>
+                <span class="hold-btn-label">Hold to Speak</span>
+                <span class="hold-btn-shortcut">Ctrl+Super</span>
+              </button>
+              <button type="button" class="simulate-btn" id="simulateBtn" aria-label="Simulate dictation">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                 Simulate
               </button>
             </div>
+          </div>
+
+          <div class="demo-footnote">
+            <span>Hold the button (or click Simulate) to watch Wisp type directly into the focused desktop app</span>
           </div>
         </div>
 
