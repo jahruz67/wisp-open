@@ -16,6 +16,8 @@ Linux packages include the same whisper.cpp Vulkan backend used on Windows, enab
 
 Download the package for your distribution from the release page and install it with your normal package manager. The package manager installs the app and its direct-typing dependency together.
 
+To upgrade, install the newer package with the same command; uninstalling first is unnecessary. Release builds add the workflow run number to the patch in `scripts/VERSION`, giving each run an increasing app and package version. Workflow reruns retain the same version.
+
 | Distribution | Package | Install command |
 | --- | --- | --- |
 | Ubuntu, Debian, Linux Mint, Pop!_OS | `.deb` | `sudo apt install ./wis-free-v3_<version>-1_amd64.deb` |

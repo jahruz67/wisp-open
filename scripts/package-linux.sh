@@ -301,7 +301,7 @@ fi
 INSTALLED_SIZE="$(du -sk "$DEB_ROOT/usr" | awk '{print $1}')"
 cat > "$DEB_ROOT/DEBIAN/control" <<EOF
 Package: $APP_NAME
-Version: $PKG_VERSION
+Version: ${PKG_VERSION}-${PKG_RELEASE}
 Section: utils
 Priority: optional
 Architecture: $ARCH_DEB
