@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initCopyButtons();
   initScrollReveal();
   initCurrentYear();
+  initReleaseVersion();
 });
 
 /* 1. Header Navigation & Mobile Menu */
@@ -358,18 +359,22 @@ function initModelTabs() {
   });
 }
 
-/* 4. Linux Distro Switcher */
+/* 4. Linux Distro Switcher & Dynamic Release Version */
+let currentAppVersion = '1.67.75';
+
+function getLinuxCommands(version) {
+  return {
+    deb: `sudo apt install ./wis-free-v3_${version}-1_amd64.deb`,
+    rpm: `sudo dnf install ./wis-free-v3-${version}-1.x86_64.rpm`,
+    zypper: `sudo zypper install ./wis-free-v3-${version}-1.x86_64.rpm`,
+    source: 'bash scripts/build-linux.sh --install-user'
+  };
+}
+
 function initDistroSwitcher() {
   const tabs = document.querySelectorAll('.distro-tab');
   const terminalText = document.getElementById('linuxTerminalCommand');
   const copyBtn = document.getElementById('linuxCopyBtn');
-
-  const commands = {
-    deb: 'sudo apt install ./wis-free-v3_1.67.4-1_amd64.deb',
-    rpm: 'sudo dnf install ./wis-free-v3-1.67.4-1.x86_64.rpm',
-    zypper: 'sudo zypper install ./wis-free-v3-1.67.4-1.x86_64.rpm',
-    source: 'bash scripts/build-linux.sh --install-user'
-  };
 
   tabs.forEach(tab => {
     tab.addEventListener('click', () => {
@@ -377,6 +382,7 @@ function initDistroSwitcher() {
       tab.classList.add('active');
 
       const distro = tab.dataset.distro;
+      const commands = getLinuxCommands(currentAppVersion);
       if (commands[distro] && terminalText && copyBtn) {
         terminalText.textContent = commands[distro];
         copyBtn.dataset.copy = commands[distro];
@@ -436,5 +442,65 @@ function initCurrentYear() {
   const yearElem = document.getElementById('year');
   if (yearElem) {
     yearElem.textContent = new Date().getFullYear();
+  }
+}
+
+/* 8. Dynamic GitHub Release Version Fetcher */
+async function initReleaseVersion() {
+  const versionBadge = document.getElementById('versionBadge');
+  const linuxTerminalCommand = document.getElementById('linuxTerminalCommand');
+  const linuxCopyBtn = document.getElementById('linuxCopyBtn');
+  const windowsPackageName = document.getElementById('windowsPackageName');
+  const macosPackageName = document.getElementById('macosPackageName');
+
+  function applyVersion(version, tag) {
+    currentAppVersion = version;
+    if (versionBadge) {
+      versionBadge.textContent = tag.startsWith('v') ? tag : `v${version}`;
+    }
+    const activeDistroTab = document.querySelector('.distro-tab.active')?.dataset?.distro || 'deb';
+    const commands = getLinuxCommands(version);
+    if (linuxTerminalCommand && commands[activeDistroTab]) {
+      linuxTerminalCommand.textContent = commands[activeDistroTab];
+    }
+    if (linuxCopyBtn && commands[activeDistroTab]) {
+      linuxCopyBtn.dataset.copy = commands[activeDistroTab];
+    }
+    if (windowsPackageName) {
+      windowsPackageName.textContent = `wis-free-v3-setup-${version}.exe`;
+    }
+    if (macosPackageName) {
+      macosPackageName.textContent = `wis-free-v3_${version}_macos-arm64-preview.dmg`;
+    }
+  }
+
+  // 1. Check cached release in localStorage (10 minute TTL to respect rate limits)
+  const cachedRelease = localStorage.getItem('wisp_latest_release');
+  const cachedTime = localStorage.getItem('wisp_latest_release_time');
+  const now = Date.now();
+  if (cachedRelease && cachedTime && (now - parseInt(cachedTime, 10) < 10 * 60 * 1000)) {
+    try {
+      const parsed = JSON.parse(cachedRelease);
+      if (parsed && parsed.version && parsed.tag) {
+        applyVersion(parsed.version, parsed.tag);
+        return;
+      }
+    } catch (_) {}
+  }
+
+  // 2. Fetch latest release from GitHub API
+  try {
+    const res = await fetch('https://api.github.com/repos/jahruz67/wisp-open/releases/latest');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.tag_name) return;
+
+    const tag = data.tag_name;
+    const version = tag.replace(/^v/, '');
+    localStorage.setItem('wisp_latest_release', JSON.stringify({ version, tag }));
+    localStorage.setItem('wisp_latest_release_time', now.toString());
+    applyVersion(version, tag);
+  } catch (err) {
+    console.debug('GitHub release fetch error; using baseline version', err);
   }
 }
