@@ -1195,93 +1195,6 @@ h2 {
   line-height: 1.65;
 }
 
-/* Workflow Section (3 Steps) */
-.workflow-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 20px;
-}
-
-.workflow-card {
-  background: linear-gradient(165deg, var(--surface-top), var(--surface-card) 60%);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 34px 28px;
-  position: relative;
-  box-shadow: inset 0 1px 0 var(--bevel), var(--shadow-sm);
-  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-  display: flex;
-  flex-direction: column;
-}
-
-.workflow-card:hover {
-  transform: translateY(-4px);
-  border-color: var(--border-hover);
-  box-shadow: var(--shadow-card);
-}
-
-.step-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 22px;
-}
-
-.step-num {
-  font-family: var(--mono);
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--accent);
-  background: var(--accent-dim);
-  border: 1px solid var(--border-light);
-  padding: 3px 9px;
-  border-radius: var(--radius-pill);
-}
-
-.step-icon-wrap {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  display: grid;
-  place-items: center;
-  color: var(--accent);
-}
-
-.step-icon-wrap svg {
-  width: 22px;
-  height: 22px;
-  stroke: currentColor;
-  fill: none;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.workflow-card h3 {
-  font-size: 20px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  color: var(--text);
-  margin-bottom: 12px;
-}
-
-.workflow-card p {
-  font-size: 14px;
-  color: var(--text-2);
-  line-height: 1.65;
-  margin-bottom: 18px;
-}
-
-.workflow-footnote {
-  margin-top: auto;
-  font-size: 11.5px;
-  font-family: var(--mono);
-  color: var(--text-3);
-  padding-top: 12px;
-  border-top: 1px solid rgba(42, 60, 80, 0.45);
-}
 
 /* Bento Features Section */
 .features-section {
@@ -2072,10 +1985,7 @@ h2 {
     gap: 24px;
   }
   
-  .workflow-grid {
-    grid-template-columns: 1fr;
-  }
-  
+
   .platforms-grid {
     grid-template-columns: 1fr;
   }
