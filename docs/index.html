@@ -140,29 +140,12 @@
               </div>
             </div>
 
-            <!-- Native Floating Pill Overlay (Positioned at bottom center of desktop, like real Wisp) -->
-            <div class="hud-overlay" id="hudOverlay">
-              <div class="hud-left">
-                <div class="hud-mic-indicator" id="hudIcon">
-                  <img src="./tray_idle.png" alt="Mic" width="14" height="14">
-                </div>
-                <div class="hud-state-label">
-                  <span id="hudTitle">Ready</span>
-                  <small id="hudSub">Hold Ctrl+Super to speak</small>
-                </div>
-              </div>
-
+            <!-- Native Floating Pill Overlay — matches actual overlay.go: dark pill, animated bars only -->
+            <div class="hud-overlay hud-hidden" id="hudOverlay" aria-label="Wisp voice recording status">
               <div class="hud-waveform" aria-hidden="true">
                 <span class="wave-bar"></span><span class="wave-bar"></span><span class="wave-bar"></span>
                 <span class="wave-bar"></span><span class="wave-bar"></span><span class="wave-bar"></span>
-                <span class="wave-bar"></span><span class="wave-bar"></span><span class="wave-bar"></span>
-                <span class="wave-bar"></span><span class="wave-bar"></span><span class="wave-bar"></span>
-                <span class="wave-bar"></span><span class="wave-bar"></span><span class="wave-bar"></span>
-              </div>
-
-              <div class="hud-right">
-                <span class="hud-timer" id="hudTimer">0.4s</span>
-                <span class="hud-hotkey-pill" id="hudHotkey"><kbd>Ctrl</kbd>+<kbd>Super</kbd></span>
+                <span class="wave-bar"></span>
               </div>
             </div>
           </div>
@@ -173,8 +156,7 @@
               <span class="demo-dock-label">Focused App:</span>
               <button type="button" class="preset-chip active" data-index="0">📝 Notes</button>
               <button type="button" class="preset-chip" data-index="1">💬 Chat</button>
-              <button type="button" class="preset-chip" data-index="2">💻 Code</button>
-              <button type="button" class="preset-chip" data-index="3">✉️ Email</button>
+              <button type="button" class="preset-chip" data-index="2">✉️ Email</button>
             </div>
             
             <div class="demo-actions">

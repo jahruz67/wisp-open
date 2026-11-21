@@ -45,13 +45,15 @@ function initHeader() {
   }
 }
 
-/* 2. Interactive Desktop Dictation & Floating HUD Overlay Simulator */
+/* 2. Interactive Desktop Dictation & Floating HUD Overlay Simulator
+   Accurately reflects real Wisp overlay.go behavior:
+   - Overlay is a compact dark pill (124x44px), HIDDEN by default
+   - Recording: overlay appears with 7 animated WHITE waveform bars
+   - Transcribing: overlay stays visible, bars pulse in GOLD/ORANGE
+   - Injected: overlay DISAPPEARS, and text types directly into the active app window
+*/
 function initDictationSimulator() {
   const overlay = document.getElementById('hudOverlay');
-  const hudIcon = document.getElementById('hudIcon');
-  const hudTitle = document.getElementById('hudTitle');
-  const hudSub = document.getElementById('hudSub');
-  const hudTimer = document.getElementById('hudTimer');
   const waveBars = document.querySelectorAll('.hud-waveform .wave-bar');
   const osActiveApp = document.getElementById('osActiveApp');
   const osTrayIcon = document.getElementById('osTrayIcon');
@@ -67,24 +69,22 @@ function initDictationSimulator() {
 
   if (!overlay || !appContent) return;
 
-  // Real-world desktop application presets
+  // Real-world desktop application presets: Notes, Chat (Slack), Email
   const presets = [
     {
       id: 'notes',
-      label: '📝 Notes',
       appName: 'Notes',
       appIcon: '📝',
       windowTitle: 'Notes — Sprint Planning',
       meta: '100% Offline (GPU)',
-      spoken: 'wisp integrates direct typing with zero clipboard interference and local privacy',
-      refined: '- Direct typing: Keystrokes are injected straight into the focused app.\n- 100% Offline: NVIDIA Parakeet and Whisper run locally on-device without cloud telemetry.',
+      refined: '- Direct typing: Keystrokes are injected straight into the focused app.\n- 100% offline: NVIDIA Parakeet and Whisper run locally with zero cloud telemetry.',
       render: () => `
         <div class="notes-view">
           <div class="notes-doc-title">Sprint 14 Priorities</div>
           <div class="notes-doc-meta">
             <span>📅 Today</span>
             <span>📂 Engineering Sync</span>
-            <span>🔒 Local Document</span>
+            <span>🔒 Local Note</span>
           </div>
           <p class="notes-lead-text">Deliverables for desktop voice injection engine:</p>
           <div class="typed-area">
@@ -95,12 +95,10 @@ function initDictationSimulator() {
     },
     {
       id: 'chat',
-      label: '💬 Chat',
       appName: 'Slack',
       appIcon: '💬',
       windowTitle: 'Slack — #product-design',
       meta: 'Cloud · 0.8s',
-      spoken: 'yeah lets move the product review to thursday afternoon and invite the engineering leads too',
       refined: 'Yeah, let’s move the product review to Thursday afternoon and invite the engineering leads too.',
       render: () => `
         <div class="chat-view">
@@ -125,38 +123,11 @@ function initDictationSimulator() {
       `
     },
     {
-      id: 'code',
-      label: '💻 Code',
-      appName: 'Code',
-      appIcon: '💻',
-      windowTitle: 'VS Code — transcription.py',
-      meta: 'Local CPU · Refined',
-      spoken: 'define a function called record and transcribe with timeout five seconds and error handling',
-      refined: 'def record_and_transcribe(timeout: int = 5) -> str:\n    try:\n        return engine.transcribe(stream_audio(), timeout=timeout)\n    except AudioCaptureError as err:\n        logger.warning(f"Capture error: {err}")\n        return ""',
-      render: () => `
-        <div class="code-view">
-          <div class="code-tabs-bar">
-            <span class="code-tab-pill">transcription.py</span>
-            <span style="font-size: 11px; color: var(--text-3); padding: 2px 6px;">settings.go</span>
-          </div>
-          <div class="code-pre-lines">
-            <span class="code-kw">import</span> whisper_cpp<br>
-            <span class="code-comment"># Global hold-to-record desktop listener</span>
-          </div>
-          <div class="typed-area">
-            <span class="typed-text" id="typedText"></span><span class="caret" aria-hidden="true"></span>
-          </div>
-        </div>
-      `
-    },
-    {
       id: 'email',
-      label: '✉️ Email',
       appName: 'Mail',
       appIcon: '✉️',
       windowTitle: 'Mail — Re: Release Sync',
       meta: 'Cloud · Refined',
-      spoken: 'thanks for the update looks great to me go ahead and cut the 1.67 release tomorrow morning',
       refined: 'Hi team,\n\nThanks for the update — looks great to me. Let’s proceed with cutting the v1.67 release tomorrow morning!',
       render: () => `
         <div class="email-view">
@@ -176,35 +147,49 @@ function initDictationSimulator() {
   let isSimulating = false;
   let isHolding = false;
   let waveAnimInterval = null;
-  let timerInterval = null;
   let typingTimeout = null;
   let autoReleaseTimeout = null;
 
-  // Keep OS clock fresh
+  // Keep OS clock accurate
   if (osClock) {
-    const now = new Date();
-    osClock.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const updateClock = () => {
+      osClock.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    };
+    updateClock();
+    setInterval(updateClock, 30000);
   }
 
-  function setWaveBars(active) {
+  // Wave bar animation matching overlay.go
+  function startWaveBars(mode) {
     if (waveAnimInterval) clearInterval(waveAnimInterval);
-    if (!active) {
-      waveBars.forEach(bar => {
-        bar.style.height = '6px';
-        bar.style.opacity = '0.5';
-      });
-      return;
-    }
 
-    waveAnimInterval = setInterval(() => {
-      waveBars.forEach((bar, idx) => {
-        const base = Math.sin((Date.now() / 140) + idx * 0.45);
-        const noise = Math.random() * 0.4;
-        const normalized = Math.max(0.15, Math.min(1, Math.abs(base) * 0.7 + noise));
-        bar.style.height = `${Math.round(normalized * 22 + 4)}px`;
-        bar.style.opacity = '1';
-      });
-    }, 75);
+    if (mode === 'recording') {
+      // overlay.go: t := float64(time.Now().UnixNano()) / 1e9 * 6.0
+      waveAnimInterval = setInterval(() => {
+        const t = (Date.now() / 1000) * 6.0;
+        waveBars.forEach((bar, i) => {
+          const phase = i * 0.8;
+          const animH = Math.abs(Math.sin(t + phase));
+          const h = 8 + animH * 18;
+          bar.style.height = `${Math.round(h)}px`;
+        });
+      }, 50);
+    } else if (mode === 'transcribing') {
+      // overlay.go: t := float64(time.Now().UnixNano()) / 1e9 * 3.0
+      waveAnimInterval = setInterval(() => {
+        const t = (Date.now() / 1000) * 3.0;
+        waveBars.forEach((bar, i) => {
+          const h = 10 + 10 * Math.abs(Math.sin(t + i * 0.3));
+          bar.style.height = `${Math.round(h)}px`;
+        });
+      }, 50);
+    }
+  }
+
+  function stopWaveBars() {
+    if (waveAnimInterval) clearInterval(waveAnimInterval);
+    waveAnimInterval = null;
+    waveBars.forEach(bar => { bar.style.height = '8px'; });
   }
 
   function renderPreset(index) {
@@ -213,190 +198,137 @@ function initDictationSimulator() {
     if (appIcon) appIcon.textContent = data.appIcon;
     if (appWindowTitle) appWindowTitle.textContent = data.windowTitle;
     if (editorMeta) editorMeta.textContent = data.meta;
-    
     appContent.innerHTML = data.render();
   }
 
-  // Step 1: START RECORDING (Triggered when user holds button or hotkey)
+  // Phase 1: User holds hotkey / button -> Overlay APPEARS with white waveform bars
   function startRecording() {
     if (isHolding) return;
     isHolding = true;
 
     clearTimeout(typingTimeout);
     clearTimeout(autoReleaseTimeout);
-    clearInterval(waveAnimInterval);
-    clearInterval(timerInterval);
+    stopWaveBars();
 
     const typedContainer = document.getElementById('typedText');
     if (typedContainer) typedContainer.textContent = '';
 
-    // HUD enters Recording state
+    // Overlay appears: white animated bars
     overlay.className = 'hud-overlay is-recording';
-    hudIcon.className = 'hud-mic-indicator recording';
-    hudIcon.innerHTML = `<img src="./tray_recording.png" alt="Recording" width="14" height="14">`;
-    hudTitle.textContent = 'Listening...';
-    hudSub.textContent = 'Hold Ctrl+Super';
-    hudTimer.textContent = '00:01';
-    setWaveBars(true);
-
-    // Update tray icon in OS bar
     if (osTrayIcon) osTrayIcon.src = './tray_recording.png';
     if (osWispTray) osWispTray.classList.add('recording');
-
-    // Button active state
     if (holdBtn) {
       holdBtn.classList.add('is-holding');
-      const label = holdBtn.querySelector('.hold-btn-label');
-      if (label) label.textContent = 'Listening...';
+      const lbl = holdBtn.querySelector('.hold-btn-label');
+      if (lbl) lbl.textContent = 'Recording...';
     }
-
-    let seconds = 1;
-    timerInterval = setInterval(() => {
-      seconds++;
-      hudTimer.textContent = `00:0${seconds}`;
-    }, 1000);
+    startWaveBars('recording');
   }
 
-  // Step 2 & 3: FINISH RECORDING -> TRANSCRIBE -> REFINE -> DIRECT INJECT
+  // Phase 2: User releases hotkey -> Overlay turns orange/gold (Transcribing...)
+  // Phase 3: Text is injected into focused app -> Overlay DISAPPEARS completely
   function finishRecording() {
     if (!isHolding) return;
     isHolding = false;
 
-    clearInterval(timerInterval);
-    clearInterval(waveAnimInterval);
-    setWaveBars(false);
-
-    // Reset button
+    stopWaveBars();
     if (holdBtn) {
       holdBtn.classList.remove('is-holding');
-      const label = holdBtn.querySelector('.hold-btn-label');
-      if (label) label.textContent = 'Hold to Speak';
+      const lbl = holdBtn.querySelector('.hold-btn-label');
+      if (lbl) lbl.textContent = 'Hold to Speak';
     }
-
-    // Reset OS tray
     if (osWispTray) osWispTray.classList.remove('recording');
 
     const data = presets[currentPresetIndex];
     const typedContainer = document.getElementById('typedText');
 
-    // Stage 1: Transcribing
+    // Overlay turns orange/gold during transcribing
     overlay.className = 'hud-overlay is-transcribing';
-    hudIcon.className = 'hud-mic-indicator transcribing';
-    hudIcon.innerHTML = `<img src="./tray_transcribing.png" alt="Transcribing" width="14" height="14">`;
     if (osTrayIcon) osTrayIcon.src = './tray_transcribing.png';
-    hudTitle.textContent = 'Transcribing...';
-    hudSub.textContent = data.meta.includes('100% Offline') || data.meta.includes('Local') ? 'NVIDIA Parakeet (0.3s)' : 'Groq Whisper Turbo (0.2s)';
-    hudTimer.textContent = '0.3s';
+    startWaveBars('transcribing');
 
-    // Stage 2: Refining with LLM
+    // After 600ms processing, overlay disappears and text is injected directly
     setTimeout(() => {
-      overlay.className = 'hud-overlay is-refined';
-      hudIcon.className = 'hud-mic-indicator';
-      hudIcon.innerHTML = `<img src="./tray_idle.png" alt="Refining" width="14" height="14">`;
-      hudTitle.textContent = 'Refining...';
-      hudSub.textContent = 'Polishing grammar & format';
-      hudTimer.textContent = '0.5s';
+      stopWaveBars();
+      // Overlay hides: matches overlay.go Hide()
+      overlay.className = 'hud-overlay';
+      if (osTrayIcon) osTrayIcon.src = './tray_idle.png';
 
-      // Stage 3: Direct Injection into the active app window
-      setTimeout(() => {
-        overlay.className = 'hud-overlay is-typing';
-        hudTitle.textContent = 'Direct Typing';
-        hudSub.textContent = `Injecting into ${data.appName}`;
-        if (osTrayIcon) osTrayIcon.src = './tray_idle.png';
+      if (!typedContainer) return;
+      let charIndex = 0;
+      const textToType = data.refined;
 
-        if (!typedContainer) return;
-        let charIndex = 0;
-        const textToType = data.refined;
-
-        function typeNextChar() {
-          if (charIndex < textToType.length) {
-            typedContainer.textContent += textToType.charAt(charIndex);
-            charIndex++;
-            const char = textToType.charAt(charIndex - 1);
-            const delay = char === '\n' ? 100 : char === ' ' ? 28 : 16;
-            typingTimeout = setTimeout(typeNextChar, delay);
-          } else {
-            // Completed typing!
-            setTimeout(() => {
-              overlay.className = 'hud-overlay';
-              hudTitle.textContent = 'Ready';
-              hudSub.textContent = 'Hold Ctrl+Super to speak';
-              hudTimer.textContent = '0.4s';
-              isSimulating = false;
-            }, 1400);
-          }
+      function typeNextChar() {
+        if (charIndex < textToType.length) {
+          typedContainer.textContent += textToType.charAt(charIndex);
+          charIndex++;
+          const ch = textToType.charAt(charIndex - 1);
+          typingTimeout = setTimeout(typeNextChar, ch === '\n' ? 90 : ch === ' ' ? 24 : 14);
+        } else {
+          isSimulating = false;
         }
-        typeNextChar();
+      }
+      typeNextChar();
 
-      }, 650);
-
-    }, 700);
+    }, 600);
   }
 
-  // Trigger full automated simulation
+  // Full automated demonstration
   function runAutomatedSimulation(presetIndex) {
-    if (isHolding || isSimulating) {
-      clearTimeout(typingTimeout);
-      clearTimeout(autoReleaseTimeout);
-      finishRecording();
+    clearTimeout(typingTimeout);
+    clearTimeout(autoReleaseTimeout);
+    if (isHolding) {
+      isHolding = false;
+      stopWaveBars();
     }
     isSimulating = true;
     currentPresetIndex = presetIndex;
-    renderPreset(currentPresetIndex);
+    renderPreset(presetIndex);
 
     startRecording();
-
-    // After 2.1s of speech, automatically release
     autoReleaseTimeout = setTimeout(() => {
       finishRecording();
-    }, 2100);
+    }, 2000);
   }
 
-  // Preset switching
+  // Preset switching (Notes, Chat, Email)
   presetChips.forEach((chip, index) => {
     chip.addEventListener('click', () => {
       presetChips.forEach(c => c.classList.remove('active'));
       chip.classList.add('active');
       currentPresetIndex = index;
-      runAutomatedSimulation(currentPresetIndex);
+      runAutomatedSimulation(index);
     });
   });
 
-  // Tactile Hold-to-Speak button listeners
+  // Tactile Hold-to-Speak button
   if (holdBtn) {
-    // Mouse hold
-    holdBtn.addEventListener('mousedown', (e) => {
+    holdBtn.addEventListener('mousedown', e => {
       e.preventDefault();
       startRecording();
     });
-
     window.addEventListener('mouseup', () => {
       if (isHolding) finishRecording();
     });
-
-    // Touch hold (mobile / tablet)
-    holdBtn.addEventListener('touchstart', (e) => {
+    holdBtn.addEventListener('touchstart', e => {
       e.preventDefault();
       startRecording();
     });
-
-    holdBtn.addEventListener('touchend', (e) => {
+    holdBtn.addEventListener('touchend', e => {
       e.preventDefault();
       if (isHolding) finishRecording();
     });
   }
 
-  // 1-Click Simulate button
+  // Simulate button
   if (simulateBtn) {
     simulateBtn.addEventListener('click', () => {
       runAutomatedSimulation(currentPresetIndex);
     });
   }
 
-  // Initial render
+  // Initial setup
   renderPreset(0);
-
-  // Trigger polite initial demo on load after 900ms
   setTimeout(() => {
     runAutomatedSimulation(0);
   }, 900);
